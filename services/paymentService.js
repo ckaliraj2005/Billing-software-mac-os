@@ -24,7 +24,7 @@ const insertManualLedgerStmt = db.prepare(
 );
 const updateManualLedgerStmt = db.prepare(
   `UPDATE ledger
-   SET date = ?, particulars = ?, amount = ?, description = ?
+   SET date = ?, type = ?, particulars = ?, amount = ?, description = ?
    WHERE id = ? AND payment_id IS NULL AND purchase_id IS NULL AND sale_id IS NULL`
 );
 const deleteManualLedgerStmt = db.prepare(
@@ -37,16 +37,11 @@ const insertLedgerStmt = db.prepare(
    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 );
 
-function roundCurrency(amount) {
-  const num = Number(amount) || 0;
-  return Math.round((num + Number.EPSILON) * 100) / 100;
-}
-
 function normalizePaymentData(data) {
   const paymentType = data.type === 'OUT' ? 'OUT' : 'IN';
   const paymentDate = data.date || new Date().toISOString().slice(0, 10);
   const partyId = Number(data.party_id);
-  const amount = roundCurrency(Number(data.amount) || 0);
+  const amount = Number(data.amount) || 0;
   const modeRaw = String(data.mode || '').trim();
   const modeLower = modeRaw.toLowerCase();
   const mode = modeLower === 'cash'
@@ -209,12 +204,16 @@ function getLedger(filters = {}) {
       conditions.push('l.date <= ?');
       params.push(filters.dateTo);
     }
+
+    conditions.push("(l.account IN ('Party', 'Manual') OR l.account IS NULL OR l.payment_id IS NOT NULL)");
     
     const whereSql = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const stmt = db.prepare(`
       SELECT l.id, l.payment_id, l.purchase_id, l.sale_id,
              l.date, l.party_id, p.name AS party_name, p.phone AS party_phone,
              l.type, l.account, l.particulars, l.amount, l.description,
+             CASE WHEN lower(l.type) = 'debit' THEN l.amount ELSE 0 END AS debit,
+             CASE WHEN lower(l.type) = 'credit' THEN l.amount ELSE 0 END AS credit,
              pay.type AS payment_type,
              COALESCE(pu.bill_no, CAST(pu.id AS TEXT), '') AS purchase_bill_no,
              COALESCE(s.bill_no, CAST(s.id AS TEXT), '') AS sale_bill_no
@@ -288,13 +287,23 @@ function updateManualLedgerEntry(id, rawData) {
     const particulars = String(rawData?.particulars || existing.particulars || '').trim();
     const debit = Number(rawData?.debit) || 0;
     const credit = Number(rawData?.credit) || 0;
-    const amount = existing.type === 'debit' ? debit : credit;
+    let type = existing.type;
+    let amount = 0;
+    if (debit > 0) {
+      type = 'debit';
+      amount = debit;
+    } else if (credit > 0) {
+      type = 'credit';
+      amount = credit;
+    } else {
+      amount = Number(rawData?.amount) || Number(existing.amount) || 0;
+    }
 
     if (!date || !particulars || amount <= 0) {
       return { success: false, message: 'Valid date, particulars and amount are required.' };
     }
 
-    const result = updateManualLedgerStmt.run(date, particulars, amount, particulars, rowId);
+    const result = updateManualLedgerStmt.run(date, type, particulars, amount, particulars, rowId);
     return { success: result.changes > 0 };
   } catch (error) {
     return { success: false, message: error.message || 'Unable to update manual ledger entry.' };

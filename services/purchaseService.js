@@ -383,31 +383,21 @@ function applyGodownStockDelta(item, godownId, multiplier, purchaseDate, purchas
 function writePurchaseLedgerEntries(purchaseId, purchaseDate, partyId, deliveryType, purchaseTotal, billNo) {
   const safeBillNo = String(billNo || purchaseId || '').trim() || String(purchaseId);
   const particulars = `Purchase Bill #${safeBillNo}`;
-  const creditAccount = deliveryType === 'Cash' ? 'Cash' : 'Party';
+  const isCredit = normalizeDeliveryType(deliveryType) !== 'Cash';
 
-  insertLedgerStmt.run(
-    purchaseDate,
-    null,
-    purchaseId,
-    partyId,
-    'debit',
-    'Stock',
-    particulars,
-    purchaseTotal,
-    particulars
-  );
-
-  insertLedgerStmt.run(
-    purchaseDate,
-    null,
-    purchaseId,
-    partyId,
-    'credit',
-    creditAccount,
-    particulars,
-    purchaseTotal,
-    particulars
-  );
+  if (isCredit && Number(purchaseTotal) > 0) {
+    insertLedgerStmt.run(
+      purchaseDate,
+      null,
+      purchaseId,
+      partyId,
+      'credit',
+      'Party',
+      particulars,
+      Number(purchaseTotal),
+      particulars
+    );
+  }
 }
 
 function rebuildPurchaseLedger(purchaseId) {

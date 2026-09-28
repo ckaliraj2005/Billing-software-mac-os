@@ -47,11 +47,6 @@ let currentLedgerSummary = {
 };
 const LOW_STOCK_QTY_THRESHOLD = 25;
 let activeEditorDialogResolve = null;
-
-function roundCurrency(amount) {
-    const num = Number(amount) || 0;
-    return Math.round((num + Number.EPSILON) * 100) / 100;
-}
 function showLoading(show) {
     const el = document.getElementById('globalLoading');
     if (!el) {
@@ -1737,7 +1732,7 @@ function renderLedgerBook(rows) {
         return;
     }
     let html = '';
-    rows.forEach(entry => {
+    summary.rows.forEach(entry => {
         const paymentId = Number(entry?.payment_id) || 0;
         const purchaseId = Number(entry?.purchase_id) || 0;
         const saleId = Number(entry?.sale_id) || 0;
@@ -2053,7 +2048,7 @@ function buildLedgerShareMessage() {
         lines.push('No ledger entries found.');
     } else {
         lines.push('Entries:');
-        rows.forEach((entry, index) => {
+        summary.rows.forEach((entry, index) => {
             lines.push(`${ index + 1 }. ${ formatDisplayDate(entry.date || '-') } | ${ entry.particulars || '-' } | Dr ${ entry.debit > 0 ? formatCurrency(entry.debit) : '-' } | Cr ${ entry.credit > 0 ? formatCurrency(entry.credit) : '-' } | Bal ${ formatCurrency(entry.balance) }`);
         });
     }
@@ -2217,12 +2212,12 @@ function calculatePurchaseLineTotal() {
     const discountMode = String(document.getElementById('purchaseDiscountMode')?.value || 'amount').trim();
     const packingMode = String(document.getElementById('purchasePackingMode')?.value || 'amount').trim();
     const commissionMode = String(document.getElementById('purchaseAgentCommissionMode')?.value || 'amount').trim();
-    const lineBase = roundCurrency(cases * qtyPerCase * rate);
-    const discountAmount = discountMode === 'percent' ? roundCurrency(lineBase * discountValue / 100) : discountValue;
-    const packingAmount = packingMode === 'percent' ? roundCurrency(lineBase * packingCharge / 100) : packingCharge;
-    const commissionAmount = commissionMode === 'percent' ? roundCurrency(lineBase * agentCommission / 100) : agentCommission;
-    const total = roundCurrency(lineBase - discountAmount + packingAmount + transportCharge + commissionAmount);
-    document.getElementById('purchaseLineTotal').value = (cases > 0 || qtyPerCase > 0 || rate > 0) ? total.toFixed(2) : '';
+    const lineBase = cases * qtyPerCase * rate;
+    const discountAmount = discountMode === 'percent' ? lineBase * discountValue / 100 : discountValue;
+    const packingAmount = packingMode === 'percent' ? lineBase * packingCharge / 100 : packingCharge;
+    const commissionAmount = commissionMode === 'percent' ? lineBase * agentCommission / 100 : agentCommission;
+    const total = lineBase - discountAmount + packingAmount + transportCharge + commissionAmount;
+    document.getElementById('purchaseLineTotal').value = total ? total.toFixed(2) : '';
 }
 function clearPurchaseLineForm() {
     document.getElementById('purchaseProductName').value = '';
@@ -3157,8 +3152,8 @@ function calculateSaleLineTotal() {
     const cases = Number(document.getElementById('saleBoxes').value) || 0;
     const qtyPerCase = Number(document.getElementById('salePieces').value) || 0;
     const rate = Number(document.getElementById('saleRate').value) || 0;
-    const total = roundCurrency(cases * qtyPerCase * rate);
-    document.getElementById('saleLineTotal').value = (cases > 0 || qtyPerCase > 0 || rate > 0) ? total.toFixed(2) : '';
+    const total = cases * qtyPerCase * rate;
+    document.getElementById('saleLineTotal').value = total ? total.toFixed(2) : '';
 }
 function clearSaleLineForm() {
     document.getElementById('saleProductId').value = '';
@@ -3213,18 +3208,18 @@ function resetSaleForm() {
     setValue('saleUnitType', 'Pcs');
 }
 function recalculateSaleFinalTotal() {
-    const grand = roundCurrency(saleItemsDraft.reduce((sum, item) => sum + (Number(item.total) || 0), 0));
+    const grand = saleItemsDraft.reduce((sum, item) => sum + item.total, 0);
     const discountRaw = Number(document.getElementById('saleDiscount').value) || 0;
     const transportRaw = Number(document.getElementById('saleDeliveryCharges').value) || 0;
     const commissionRaw = Number(document.getElementById('saleCommissionCharges').value) || 0;
     const discountMode = String(document.getElementById('saleDiscountMode')?.value || 'amount').trim();
     const packingMode = String(document.getElementById('salePackingMode')?.value || 'amount').trim();
-    const discountAmount = discountMode === 'percent' ? roundCurrency(grand * discountRaw / 100) : discountRaw;
-    const packingAmount = packingMode === 'percent' ? roundCurrency(grand * commissionRaw / 100) : commissionRaw;
+    const discountAmount = discountMode === 'percent' ? grand * discountRaw / 100 : discountRaw;
+    const packingAmount = packingMode === 'percent' ? grand * commissionRaw / 100 : commissionRaw;
     const discount = document.getElementById('saleUseDiscount').checked ? discountAmount : 0;
     const transport = document.getElementById('saleUseTransport').checked ? transportRaw : 0;
     const commission = document.getElementById('saleUseCommission').checked ? packingAmount : 0;
-    const finalTotal = roundCurrency(Math.max(0, grand - discount) + transport + commission);
+    const finalTotal = Math.max(0, grand - discount) + transport + commission;
     document.getElementById('saleGrandTotal').value = grand.toFixed(2);
     document.getElementById('saleFinalTotal').value = finalTotal.toFixed(2);
 }
@@ -3307,12 +3302,11 @@ async function saveSaleInvoice() {
     const commissionRaw = Number(document.getElementById('saleCommissionCharges').value) || 0;
     const discountMode = String(document.getElementById('saleDiscountMode')?.value || 'amount').trim();
     const packingMode = String(document.getElementById('salePackingMode')?.value || 'amount').trim();
-    const itemsSum = roundCurrency(saleItemsDraft.reduce((sum, item) => sum + (Number(item.total) || 0), 0));
-    const discountAmount = discountMode === 'percent' ? roundCurrency(itemsSum * discountRaw / 100) : discountRaw;
-    const packingAmount = packingMode === 'percent' ? roundCurrency(itemsSum * commissionRaw / 100) : commissionRaw;
-    const discount = roundCurrency(document.getElementById('saleUseDiscount').checked ? discountAmount : 0);
-    const deliveryCharges = roundCurrency(document.getElementById('saleUseTransport').checked ? deliveryRaw : 0);
-    const commissionCharges = roundCurrency(document.getElementById('saleUseCommission').checked ? packingAmount : 0);
+    const discountAmount = discountMode === 'percent' ? saleItemsDraft.reduce((sum, item) => sum + item.total, 0) * discountRaw / 100 : discountRaw;
+    const packingAmount = packingMode === 'percent' ? saleItemsDraft.reduce((sum, item) => sum + item.total, 0) * commissionRaw / 100 : commissionRaw;
+    const discount = document.getElementById('saleUseDiscount').checked ? discountAmount : 0;
+    const deliveryCharges = document.getElementById('saleUseTransport').checked ? deliveryRaw : 0;
+    const commissionCharges = document.getElementById('saleUseCommission').checked ? packingAmount : 0;
     const editingId = Number(document.getElementById('editingSaleId').value);
     if (!date || !billNo || !partyId || saleItemsDraft.length === 0) {
         window.alert('Date, bill no, customer and at least one sale item are required.');
@@ -5174,39 +5168,37 @@ window.exportSalesCsv = exportSalesCsv;
 window.exportPurchasesCsv = exportPurchasesCsv;
 window.importPartiesCsv = importPartiesCsv;
 window.onload = async () => {
-    showView('transaction');
     await withLoading(async () => {
-        try { setDefaultDates(); } catch (e) { console.error(e); }
-        try { await initializePartyLocationInputs(); } catch (e) { console.error(e); }
-        try { clearPartyForm(); } catch (e) { console.error(e); }
-        try { resetPurchaseForm(); } catch (e) { console.error(e); }
-        try { resetSaleForm(); } catch (e) { console.error(e); }
-        try { resetPurchaseReturnForm(); } catch (e) { console.error(e); }
-        try { resetSalesReturnForm(); } catch (e) { console.error(e); }
-        try { resetRawMaterialForm(); } catch (e) { console.error(e); }
-        try { resetLabourForm(); } catch (e) { console.error(e); }
-        try { await refreshPartyData(); } catch (e) { console.error(e); }
-        try { await refreshGodowns(); } catch (e) { console.error(e); }
-        try { await loadProfileSettings(); } catch (e) { console.error(e); }
-        try { await refreshProductCatalog(); } catch (e) { console.error(e); }
-        try { await refreshPayments(); } catch (e) { console.error(e); }
-        try { await refreshSales(); } catch (e) { console.error(e); }
-        try { await refreshProfitLoss(); } catch (e) { console.error(e); }
-        try { await refreshPurchases(); } catch (e) { console.error(e); }
-        try { await refreshPartyTransactionIndex(); } catch (e) { console.error(e); }
-        try { await refreshStock(); } catch (e) { console.error(e); }
-        try { await refreshRawMaterialProductOptions(); } catch (e) { console.error(e); }
-        try { await refreshRawMaterialTransactions(); } catch (e) { console.error(e); }
-        try { await refreshRawMaterialStock(); } catch (e) { console.error(e); }
-        try { await refreshRawMaterialLedger(); } catch (e) { console.error(e); }
-        try { await refreshPurchaseRates(); } catch (e) { console.error(e); }
-        try { await refreshPurchaseReturns(); } catch (e) { console.error(e); }
-        try { await refreshSalesReturns(); } catch (e) { console.error(e); }
-        try { await refreshLabourAttendance(); } catch (e) { console.error(e); }
-        try { await loadLedger(); } catch (e) { console.error(e); }
-        if (typeof initUpdatesUI === 'function') {
-            try { await initUpdatesUI(); } catch (e) { console.error(e); }
-        }
+        setDefaultDates();
+        await initializePartyLocationInputs();
+        clearPartyForm();
+        resetPurchaseForm();
+        resetSaleForm();
+        resetPurchaseReturnForm();
+        resetSalesReturnForm();
+        resetRawMaterialForm();
+        resetLabourForm();
+        await refreshPartyData();
+        await refreshGodowns();
+        await loadProfileSettings();
+        await refreshProductCatalog();
+        await refreshPayments();
+        await refreshSales();
+        await refreshProfitLoss();
+        await refreshPurchases();
+        await refreshPartyTransactionIndex();
+        await refreshStock();
+        await refreshRawMaterialProductOptions();
+        await refreshRawMaterialTransactions();
+        await refreshRawMaterialStock();
+        await refreshRawMaterialLedger();
+        await refreshPurchaseRates();
+        await refreshPurchaseReturns();
+        await refreshSalesReturns();
+        await refreshLabourAttendance();
+        await loadLedger();
+        if (typeof initUpdatesUI === 'function')
+            await initUpdatesUI();
         showView('transaction');
     });
     const partyModal = document.getElementById('partyStatementModal');

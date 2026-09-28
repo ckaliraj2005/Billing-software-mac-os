@@ -962,6 +962,7 @@ ipcMain.handle('export-ledger-csv', async () => {
       `SELECT l.date, p.name AS party, l.type, l.account, l.particulars, l.amount, l.description
        FROM ledger l
        JOIN parties p ON p.id = l.party_id
+       WHERE (l.account IN ('Party', 'Manual') OR l.account IS NULL OR l.payment_id IS NOT NULL)
        ORDER BY l.date ASC, l.id ASC`
     ).all();
 

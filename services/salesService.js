@@ -221,9 +221,10 @@ function rollbackSaleStock(items, godownId) {
 
 function writeSaleLedgerEntries(saleId, saleDate, partyId, saleType, total) {
   const particulars = `Sale #${saleId}`;
-  const settlementAccount = getSaleSettlementAccount(saleType);
-  insertLedgerStmt.run(saleDate, null, null, saleId, partyId, 'debit', settlementAccount, particulars, total, particulars);
-  insertLedgerStmt.run(saleDate, null, null, saleId, partyId, 'credit', 'Sales', particulars, total, particulars);
+  const isCredit = normalizeSaleType(saleType) === 'credit';
+  if (isCredit && Number(total) > 0) {
+    insertLedgerStmt.run(saleDate, null, null, saleId, partyId, 'debit', 'Party', particulars, Number(total), particulars);
+  }
 }
 
 const addSaleTxn = db.transaction((data) => {

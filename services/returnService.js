@@ -141,11 +141,6 @@ function normalizeUnitType(unitType) {
   return '';
 }
 
-function roundCurrency(amount) {
-  const num = Number(amount) || 0;
-  return Math.round((num + Number.EPSILON) * 100) / 100;
-}
-
 function normalizeItems(items) {
   return (Array.isArray(items) ? items : []).map((item) => {
     const productId = Number(item.product_id);
@@ -154,8 +149,8 @@ function normalizeItems(items) {
     const unitType = normalizeUnitType(item.unit_type);
     const rate = Number(item.rate);
     const total = Number.isFinite(Number(item.total))
-      ? roundCurrency(Number(item.total))
-      : roundCurrency(Math.max(0, (Number.isFinite(boxes) ? boxes : 0) * (Number.isFinite(pieces) ? pieces : 0) * (Number.isFinite(rate) ? rate : 0)));
+      ? Number(item.total)
+      : Math.max(0, (Number.isFinite(boxes) ? boxes : 0) * (Number.isFinite(pieces) ? pieces : 0) * (Number.isFinite(rate) ? rate : 0));
 
     return {
       productId,
@@ -177,18 +172,20 @@ function normalizeItems(items) {
 
 function writePurchaseReturnLedger(returnId, payload) {
   const particulars = `Purchase Return #${returnId}`;
-  const settlementAccount = payload.mode === 'Cash' ? 'Cash' : 'Party';
+  const isCredit = normalizeMode(payload.mode) !== 'Cash';
 
-  insertLedgerStmt.run(payload.date, payload.partyId, 'debit', settlementAccount, particulars, payload.total, particulars);
-  insertLedgerStmt.run(payload.date, payload.partyId, 'credit', 'Stock', particulars, payload.total, particulars);
+  if (isCredit && Number(payload.total) > 0) {
+    insertLedgerStmt.run(payload.date, payload.partyId, 'debit', 'Party', particulars, Number(payload.total), particulars);
+  }
 }
 
 function writeSalesReturnLedger(returnId, payload) {
   const particulars = `Sales Return #${returnId}`;
-  const settlementAccount = payload.mode === 'Cash' ? 'Cash' : 'Party';
+  const isCredit = normalizeMode(payload.mode) !== 'Cash';
 
-  insertLedgerStmt.run(payload.date, payload.partyId, 'debit', 'Sales Return', particulars, payload.total, particulars);
-  insertLedgerStmt.run(payload.date, payload.partyId, 'credit', settlementAccount, particulars, payload.total, particulars);
+  if (isCredit && Number(payload.total) > 0) {
+    insertLedgerStmt.run(payload.date, payload.partyId, 'credit', 'Party', particulars, Number(payload.total), particulars);
+  }
 }
 
 function ensurePurchaseReturnStockAvailable(items, godownId) {
@@ -336,7 +333,7 @@ const addPurchaseReturnTxn = db.transaction((data) => {
     return stockCheck;
   }
 
-  const total = roundCurrency(items.reduce((sum, item) => sum + item.total, 0));
+  const total = items.reduce((sum, item) => sum + item.total, 0);
   const result = insertPurchaseReturnStmt.run(
     requestedBillNo || null,
     date,
@@ -406,7 +403,7 @@ const addSalesReturnTxn = db.transaction((data) => {
     return { success: false, message: 'Invalid sales return data.' };
   }
 
-  const total = roundCurrency(items.reduce((sum, item) => sum + item.total, 0));
+  const total = items.reduce((sum, item) => sum + item.total, 0);
   const result = insertSalesReturnStmt.run(
     requestedBillNo || null,
     date,
