@@ -38,7 +38,7 @@ contextBridge.exposeInMainWorld('api', {
   addRawMaterialTransaction: (data) => ipcRenderer.invoke('add-raw-material-transaction', data),
   updateRawMaterialTransaction: (id, data) => ipcRenderer.invoke('update-raw-material-transaction', id, data),
   deleteRawMaterialTransaction: (id) => ipcRenderer.invoke('delete-raw-material-transaction', id),
-  updateRawMaterialProductName: (oldName, newName) => ipcRenderer.invoke('update-raw-material-product-name', oldName, newName),
+  updateRawMaterialProductName: (oldName, newName, unitType) => ipcRenderer.invoke('update-raw-material-product-name', oldName, newName, unitType),
   deleteRawMaterialProduct: (productName) => ipcRenderer.invoke('delete-raw-material-product', productName),
   addSale: (data) => ipcRenderer.invoke('add-sale', data),
   updateSale: (id, data) => ipcRenderer.invoke('update-sale', id, data),

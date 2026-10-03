@@ -140,7 +140,7 @@ const updateGodownStockTotalsStmt = db.prepare(
 const updateGodownStockMetaStmt = db.prepare(
   `UPDATE godown_stock
    SET purchase_rate = ?, packing_charge = ?, transport_charge = ?,
-       agent_name = ?, selling_rate = ?, pieces_per_box = ?, unit_type = ?, last_purchase_date = ?, last_purchase_bill_no = ?
+       agent_name = ?, agent_commission = ?, selling_rate = ?, pieces_per_box = ?, unit_type = ?, last_purchase_date = ?, last_purchase_bill_no = ?
    WHERE godown_id = ? AND product_id = ?`
 );
 
@@ -318,6 +318,7 @@ function syncGodownStockMeta(godownId, productId) {
     Number(latest.packing_charge) || 0,
     Number(latest.transport_charge) || 0,
     String(latest.agent_name || ''),
+    Number(latest.agent_commission) || 0,
     Number(latest.selling_rate) || Number(latest.rate) || 0,
     Math.max(1, Number(latest.pieces) || 1),
     normalizeUnitType(latest.unit_type) || 'Pcs',
@@ -349,6 +350,7 @@ function applyGodownStockDelta(item, godownId, multiplier, purchaseDate, purchas
         Number(item.packingCharge) || 0,
         Number(item.transportCharge) || 0,
         String(item.agentName || ''),
+        Number(item.agentCommission) || 0,
         getEffectiveSellingRate(item),
         Math.max(1, Number(item.piecesPerBox) || 1),
         normalizeUnitType(item.unitType) || 'Pcs',
@@ -809,6 +811,7 @@ function updateGodownStockItem(godownId, productId, data) {
   const oldBoxes = Number(existing.total_boxes) || 0;
   const oldPieces = Number(existing.total_pieces) || 0;
   const nextTotalPieces = nextBoxes * nextPiecesPerBox;
+  const nextCommission = Number(data?.agent_commission ?? data?.commission ?? existing.agent_commission ?? 0);
 
   const tx = db.transaction(() => {
     updateGodownStockTotalsStmt.run(nextBoxes, nextTotalPieces, targetGodownId, targetProductId);
@@ -816,7 +819,8 @@ function updateGodownStockItem(godownId, productId, data) {
       nextRate,
       nextPacking,
       nextTransport,
-      '',
+      String(data?.agent_name || existing.agent_name || ''),
+      nextCommission,
       nextSelling,
       nextPiecesPerBox,
       nextUnitType,
@@ -883,6 +887,7 @@ function getGodownStock(godownId, query = '') {
               gs.purchase_rate AS rate,
               gs.packing_charge,
               gs.transport_charge,
+              COALESCE(gs.agent_commission, 0) AS agent_commission,
               gs.agent_name,
               gs.selling_rate,
               gs.total_boxes,
@@ -903,6 +908,7 @@ function getGodownStock(godownId, query = '') {
       const purchaseRate = Number(row.rate) || 0;
       const packingCharge = Number(row.packing_charge) || 0;
       const transportCharge = Number(row.transport_charge) || 0;
+      const agentCommission = Number(row.agent_commission) || 0;
       const sellingRate = Number(row.selling_rate) || 0;
 
       return {
@@ -910,7 +916,9 @@ function getGodownStock(godownId, query = '') {
         unit_type: normalizeUnitType(row.unit_type) || 'Pcs',
         total_pieces: totalPieces,
         total_quantity: totalPieces,
-        commission: sellingRate - (purchaseRate + packingCharge + transportCharge),
+        packing_charge: packingCharge,
+        commission: agentCommission,
+        agent_commission: agentCommission,
         total_value: totalPieces * purchaseRate
       };
     });

@@ -306,9 +306,20 @@ function deleteRawMaterialTransaction(id) {
   }
 }
 
-function updateRawMaterialProductName(oldName, newName) {
+function updateRawMaterialProductName(oldName, newName, unitType = '') {
   try {
-    const result = db.prepare(`UPDATE raw_material_transactions SET product_name = ? WHERE product_name = ?`).run(String(newName).trim(), String(oldName).trim());
+    const trimmedNew = String(newName || '').trim();
+    const trimmedOld = String(oldName || '').trim();
+    if (!trimmedNew) {
+      return { success: false, message: 'Product name cannot be empty.' };
+    }
+    const normalizedUnit = normalizeUnitType(unitType);
+    let result;
+    if (normalizedUnit) {
+      result = db.prepare(`UPDATE raw_material_transactions SET product_name = ?, unit_type = ? WHERE product_name = ?`).run(trimmedNew, normalizedUnit, trimmedOld);
+    } else {
+      result = db.prepare(`UPDATE raw_material_transactions SET product_name = ? WHERE product_name = ?`).run(trimmedNew, trimmedOld);
+    }
     return { success: true, changes: result.changes };
   } catch (error) {
     return { success: false, message: error.message || 'Unable to update product name.' };

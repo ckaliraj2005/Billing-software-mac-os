@@ -2844,9 +2844,9 @@ function renderStock(rows) {
         <td class="px-4 py-3 align-middle">${ escapeHtml(unitType) }</td>
         <td class="px-4 py-3 align-middle text-right font-medium">${ escapeHtml(availableStock) }</td>
         <td class="px-4 py-3 align-middle text-right">${ Number(row.rate).toFixed(2) }</td>
-        <td class="px-4 py-3 align-middle text-right">${ Number(row.packing_charge || 0).toFixed(2) }</td>
+        <td class="px-4 py-3 align-middle text-right">${ parseFloat(Number(row.packing_charge || 0).toFixed(2)) }%</td>
         <td class="px-4 py-3 align-middle text-right">${ Number(row.transport_charge || 0).toFixed(2) }</td>
-        <td class="px-4 py-3 align-middle text-right">${ Number(row.commission || 0).toFixed(2) }</td>
+        <td class="px-4 py-3 align-middle text-right">${ Number(row.agent_commission !== undefined ? row.agent_commission : (row.commission || 0)).toFixed(2) }</td>
         <td class="px-4 py-3 align-middle text-right">${ Number(row.selling_rate || 0).toFixed(2) }</td>
         <td class="px-4 py-3 align-middle text-right font-semibold">${ stockValue.toFixed(2) }</td>
         <td class="px-4 py-3 align-middle text-center whitespace-nowrap">
@@ -2912,7 +2912,7 @@ async function editGodownStockItem(productId) {
         },
         {
             key: 'packing_charge',
-            label: 'Packing Charge',
+            label: 'Packing Charge (%)',
             type: 'number',
             step: '0.01',
             min: 0,
@@ -2925,6 +2925,14 @@ async function editGodownStockItem(productId) {
             step: '0.01',
             min: 0,
             value: Number(row.transport_charge || 0)
+        },
+        {
+            key: 'agent_commission',
+            label: 'Agent Commission',
+            type: 'number',
+            step: '0.01',
+            min: 0,
+            value: Number(row.agent_commission !== undefined ? row.agent_commission : (row.commission || 0))
         },
         {
             key: 'selling_rate',
@@ -2946,6 +2954,7 @@ async function editGodownStockItem(productId) {
         purchase_rate: Number(values.purchase_rate),
         packing_charge: Number(values.packing_charge),
         transport_charge: Number(values.transport_charge),
+        agent_commission: Number(values.agent_commission || 0),
         selling_rate: Number(values.selling_rate)
     };
     const result = await window.api.updateGodownStockItem(selectedGodownId, productId, payload);
@@ -3074,17 +3083,20 @@ function renderRawMaterialStock(rows) {
         const totalIn = Number(row.total_in || 0);
         const totalOut = Number(row.total_out || 0);
         const balanceQty = Number(row.balance_qty || 0);
+        const safeName = escapeHtml(row.product_name || '-');
+        const safeUnit = escapeHtml(row.unit_type || 'Pcs');
         html += `
-      <tr class="border-t">
-        <td class="px-4 py-3 align-middle">${ escapeHtml(row.product_name || '-') }</td>
-        <td class="px-4 py-3 align-middle">${ escapeHtml(row.unit_type || 'Pcs') }</td>
+      <tr class="border-t hover:bg-gray-50">
+        <td class="px-4 py-3 align-middle font-medium text-blue-700 hover:underline cursor-pointer" onclick="openRawMaterialUsageModal('${ safeName }', '${ safeUnit }')" title="Click to view/record usage">${ safeName }</td>
+        <td class="px-4 py-3 align-middle text-right">${ safeUnit }</td>
         <td class="px-4 py-3 align-middle text-right text-green-700 font-semibold">${ totalIn.toFixed(2) }</td>
-        <td class="px-4 py-3 align-middle text-right text-red-700 font-semibold">${ totalOut.toFixed(2) }</td>
+        <td class="px-4 py-3 align-middle text-right text-red-700 font-semibold cursor-pointer hover:underline" onclick="openRawMaterialUsageModal('${ safeName }', '${ safeUnit }')" title="Click to view/record usage">${ totalOut.toFixed(2) }</td>
         <td class="px-4 py-3 align-middle text-right font-semibold ${ balanceQty < 0 ? 'text-red-700' : 'text-blue-900' }">${ balanceQty.toFixed(2) }</td>
         <td class="px-4 py-3 align-middle text-center whitespace-nowrap">
-          <div class="inline-flex items-center justify-center gap-2">
-            <button onclick="editRawMaterialStockProduct('${ escapeHtml(row.product_name) }')" class="bg-amber-500 hover:bg-amber-600 text-white font-medium px-3 py-1.5 rounded-lg shadow-sm transition active:scale-95 text-xs">Edit</button>
-            <button onclick="removeRawMaterialStockProduct('${ escapeHtml(row.product_name) }')" class="bg-rose-600 hover:bg-rose-700 text-white font-medium px-3 py-1.5 rounded-lg shadow-sm transition active:scale-95 text-xs">Delete</button>
+          <div class="inline-flex items-center justify-center gap-1.5">
+            <button onclick="openRawMaterialReceivedModal('${ safeName }', '${ safeUnit }')" class="bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-2.5 py-1.5 rounded-lg shadow-sm transition active:scale-95 text-xs">Received</button>
+            <button onclick="editRawMaterialStockProduct('${ safeName }', '${ safeUnit }')" class="bg-amber-500 hover:bg-amber-600 text-white font-medium px-2.5 py-1.5 rounded-lg shadow-sm transition active:scale-95 text-xs">Edit</button>
+            <button onclick="removeRawMaterialStockProduct('${ safeName }')" class="bg-rose-600 hover:bg-rose-700 text-white font-medium px-2.5 py-1.5 rounded-lg shadow-sm transition active:scale-95 text-xs">Delete</button>
           </div>
         </td>
       </tr>
@@ -3092,21 +3104,46 @@ function renderRawMaterialStock(rows) {
     });
     body.innerHTML = html;
 }
-async function editRawMaterialStockProduct(productName) {
-    const newName = window.prompt(`Rename product "${ productName }" to:`, productName);
-    if (!newName || newName.trim() === productName.trim()) {
+async function editRawMaterialStockProduct(productName, currentUnit = 'Pcs') {
+    const values = await openEditorDialog('Edit Raw Material Product', [
+        {
+            key: 'product_name',
+            label: 'Product Name',
+            type: 'text',
+            value: productName
+        },
+        {
+            key: 'unit_type',
+            label: 'Quantity Type',
+            type: 'select',
+            value: normalizeUnitType(currentUnit) || 'Pcs',
+            options: ['Pcs', 'Box', 'Unit', 'Pkt', 'Kg', 'Gram', 'Bag', 'Sheet', 'Ream', 'Gross']
+        }
+    ]);
+    if (!values) {
         return;
     }
-    const result = await window.api.updateRawMaterialProductName(productName, newName);
+    const newName = String(values.product_name || '').trim();
+    const newUnit = String(values.unit_type || '').trim();
+    if (!newName) {
+        window.alert('Product name cannot be empty.');
+        return;
+    }
+    const result = await window.api.updateRawMaterialProductName(productName, newName, newUnit);
     if (!result || !result.success) {
-        window.alert(result?.message || 'Failed to rename product.');
+        window.alert(result?.message || 'Failed to update product.');
         return;
     }
     await refreshRawMaterialStock();
     await refreshRawMaterialTransactions();
     await refreshRawMaterialLedger();
+    await refreshRawMaterialProductOptions();
+    showToast('Product updated successfully.');
 }
 async function removeRawMaterialStockProduct(productName) {
+    if (!window.confirm(`Are you sure you want to delete all entries for "${productName}"?`)) {
+        return;
+    }
     const result = await window.api.deleteRawMaterialProduct(productName);
     if (!result || !result.success) {
         window.alert(result?.message || 'Failed to delete product.');
@@ -3115,6 +3152,8 @@ async function removeRawMaterialStockProduct(productName) {
     await refreshRawMaterialStock();
     await refreshRawMaterialTransactions();
     await refreshRawMaterialLedger();
+    await refreshRawMaterialProductOptions();
+    showToast('Product deleted.');
 }
 async function refreshRawMaterialStock() {
     const query = String(document.getElementById('rawMaterialStockSearch')?.value || '').trim();
@@ -3192,21 +3231,27 @@ function renderRawMaterialLedger(rows) {
     ledgerRows.forEach(row => {
         const isOut = String(row.entry_type || '').trim().toUpperCase() === 'OUT';
         const qty = Number(row.quantity || 0).toFixed(2);
+        const safeName = escapeHtml(row.product_name || '-');
+        const safeUnit = escapeHtml(row.unit_type || 'Pcs');
         const received = isOut ? '-' : qty;
-        const used = isOut ? qty : '-';
+        const usedHtml = isOut
+            ? `<button onclick="openRawMaterialUsageModal('${ safeName }', '${ safeUnit }', ${ Number(row.id) })" class="text-red-700 font-semibold hover:underline" title="Click to edit usage">${ qty }</button>`
+            : `<button onclick="openRawMaterialUsageModal('${ safeName }', '${ safeUnit }')" class="text-gray-400 hover:text-red-600 text-xs hover:underline" title="Record usage for this product">-</button>`;
+
         html.push(`
-      <tr class="border-t">
+      <tr class="border-t hover:bg-gray-50">
         <td class="px-4 py-3 align-middle">${ escapeHtml(formatDisplayDate(row.date || '-')) }</td>
         <td class="px-4 py-3 align-middle">
-          <div class="font-medium">${ escapeHtml(row.product_name || '-') }</div>
+          <div class="font-medium text-blue-700 hover:underline cursor-pointer" onclick="openRawMaterialUsageModal('${ safeName }', '${ safeUnit }')" title="Click to record/update usage">${ safeName }</div>
           <div class="text-xs text-gray-500">${ escapeHtml(row.party_name || '-') }</div>
         </td>
         <td class="px-4 py-3 align-middle text-right text-green-700 font-semibold">${ escapeHtml(received) }</td>
-        <td class="px-4 py-3 align-middle text-right text-red-700 font-semibold">${ escapeHtml(used) }</td>
+        <td class="px-4 py-3 align-middle text-right">${ usedHtml }</td>
         <td class="px-4 py-3 align-middle text-center whitespace-nowrap">
-          <div class="inline-flex items-center justify-center gap-2">
-            <button onclick="editRawMaterialLedgerRow(${ Number(row.id) })" class="bg-amber-500 hover:bg-amber-600 text-white font-medium px-3 py-1.5 rounded-lg shadow-sm transition active:scale-95 text-xs">Edit</button>
-            <button onclick="removeRawMaterialTransaction(${ Number(row.id) })" class="bg-rose-600 hover:bg-rose-700 text-white font-medium px-3 py-1.5 rounded-lg shadow-sm transition active:scale-95 text-xs">Delete</button>
+          <div class="inline-flex items-center justify-center gap-1.5">
+            <button onclick="openRawMaterialReceivedModal('${ safeName }', '${ safeUnit }')" class="bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-2.5 py-1.5 rounded-lg shadow-sm transition active:scale-95 text-xs">Received</button>
+            <button onclick="editRawMaterialLedgerRow(${ Number(row.id) })" class="bg-amber-500 hover:bg-amber-600 text-white font-medium px-2.5 py-1.5 rounded-lg shadow-sm transition active:scale-95 text-xs">Edit</button>
+            <button onclick="removeRawMaterialTransaction(${ Number(row.id) })" class="bg-rose-600 hover:bg-rose-700 text-white font-medium px-2.5 py-1.5 rounded-lg shadow-sm transition active:scale-95 text-xs">Delete</button>
           </div>
         </td>
       </tr>
@@ -4995,6 +5040,7 @@ function formatMonthLabel(monthValue) {
 function renderProfitLossSummary(data) {
     const totalSales = Number(data?.totalSales || 0);
     const totalPurchase = Number(data?.totalPurchase || 0);
+    const cogs = Number(data?.cogs || 0);
     const netProfit = Number(data?.netProfit || 0);
     const itemBasedProfit = Number(data?.itemBasedProfit || 0);
     const adjustment = Number(data?.adjustment || 0);
@@ -5006,6 +5052,10 @@ function renderProfitLossSummary(data) {
     if (totalPurchaseEl) {
         totalPurchaseEl.textContent = formatCurrency(totalPurchase);
     }
+    const cogsEl = document.getElementById('plCogs');
+    if (cogsEl) {
+        cogsEl.textContent = formatCurrency(cogs);
+    }
     const netEl = document.getElementById('plNetProfit');
     if (netEl) {
         netEl.textContent = formatCurrency(netProfit);
@@ -5015,6 +5065,8 @@ function renderProfitLossSummary(data) {
     const itemProfitEl = document.getElementById('plItemProfit');
     if (itemProfitEl) {
         itemProfitEl.textContent = formatCurrency(itemBasedProfit);
+        itemProfitEl.classList.remove('text-green-700', 'text-red-700');
+        itemProfitEl.classList.add(itemBasedProfit >= 0 ? 'text-green-700' : 'text-red-700');
     }
     const adjustmentEl = document.getElementById('plAdjustment');
     if (adjustmentEl) {
@@ -5406,6 +5458,347 @@ window.exportLedgerCsv = exportLedgerCsv;
 window.exportSalesCsv = exportSalesCsv;
 window.exportPurchasesCsv = exportPurchasesCsv;
 window.importPartiesCsv = importPartiesCsv;
+
+// Modal & selection helpers for Purchase, Sale, and Ledger
+function openPurchaseSelectModal() {
+    const modal = document.getElementById('purchaseSelectModal');
+    if (!modal) return;
+    const searchInput = document.getElementById('purchaseSelectSearch');
+    if (searchInput) searchInput.value = '';
+    modal.classList.remove('hidden');
+    renderPurchaseSelectList();
+}
+function closePurchaseSelectModal() {
+    const modal = document.getElementById('purchaseSelectModal');
+    if (modal) modal.classList.add('hidden');
+}
+function renderPurchaseSelectList() {
+    const tbody = document.getElementById('purchaseSelectListBody');
+    if (!tbody) return;
+    const search = String(document.getElementById('purchaseSelectSearch')?.value || '').trim().toLowerCase();
+    const rows = (Array.isArray(allPurchaseRows) ? allPurchaseRows : []).filter(row => {
+        if (!search) return true;
+        const billNo = String(row.bill_no || row.id || '').toLowerCase();
+        const partyName = String(row.party_name || '').toLowerCase();
+        return billNo.includes(search) || partyName.includes(search);
+    });
+    tbody.innerHTML = '';
+    if (rows.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-gray-500">No purchase entries found.</td></tr>`;
+        return;
+    }
+    rows.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-blue-50';
+        tr.innerHTML = `
+            <td class="px-3 py-2 whitespace-nowrap">${escapeHtml(formatDisplayDate(row.date || '-'))}</td>
+            <td class="px-3 py-2 font-medium">${escapeHtml(String(row.bill_no || row.id || '-'))}</td>
+            <td class="px-3 py-2">${escapeHtml(row.party_name || '-')}</td>
+            <td class="px-3 py-2 text-right">${Number(row.item_count || row.items_count || 1)}</td>
+            <td class="px-3 py-2 text-right font-semibold">${formatCurrency(row.total_amount || 0)}</td>
+            <td class="px-3 py-2 text-center">
+                <button onclick="selectPurchaseToEdit(${row.id})" class="bg-amber-500 hover:bg-amber-600 text-white font-medium px-3 py-1 rounded text-xs transition">Edit</button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+async function selectPurchaseToEdit(id) {
+    closePurchaseSelectModal();
+    await startEditPurchase(id);
+}
+
+async function openSaleSelectModal() {
+    const modal = document.getElementById('saleSelectModal');
+    if (!modal) return;
+    const searchInput = document.getElementById('saleSelectSearch');
+    if (searchInput) searchInput.value = '';
+    if (!currentSalesRows || currentSalesRows.length === 0) {
+        await refreshSales();
+    }
+    modal.classList.remove('hidden');
+    renderSaleSelectList();
+}
+function closeSaleSelectModal() {
+    const modal = document.getElementById('saleSelectModal');
+    if (modal) modal.classList.add('hidden');
+}
+function renderSaleSelectList() {
+    const tbody = document.getElementById('saleSelectListBody');
+    if (!tbody) return;
+    const search = String(document.getElementById('saleSelectSearch')?.value || '').trim().toLowerCase();
+    const rows = (Array.isArray(currentSalesRows) ? currentSalesRows : []).filter(row => {
+        if (!search) return true;
+        const billNo = String(getSaleBillNo(row) || row.id || '').toLowerCase();
+        const partyName = String(row.party_name || row.bill_name || '').toLowerCase();
+        return billNo.includes(search) || partyName.includes(search);
+    });
+    tbody.innerHTML = '';
+    if (rows.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-gray-500">No sales invoices found.</td></tr>`;
+        return;
+    }
+    rows.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-blue-50';
+        tr.innerHTML = `
+            <td class="px-3 py-2 whitespace-nowrap">${escapeHtml(formatDisplayDate(row.date || '-'))}</td>
+            <td class="px-3 py-2 font-medium">${escapeHtml(String(getSaleBillNo(row) || row.id || '-'))}</td>
+            <td class="px-3 py-2">${escapeHtml(row.party_name || row.bill_name || '-')}</td>
+            <td class="px-3 py-2 text-right">${Number(row.item_count || row.items_count || 1)}</td>
+            <td class="px-3 py-2 text-right font-semibold">${formatCurrency(row.grand_total || row.total_amount || 0)}</td>
+            <td class="px-3 py-2 text-center">
+                <button onclick="selectSaleToEdit(${row.id})" class="bg-amber-500 hover:bg-amber-600 text-white font-medium px-3 py-1 rounded text-xs transition">Edit</button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+async function selectSaleToEdit(id) {
+    closeSaleSelectModal();
+    await startEditSale(id);
+}
+
+function cancelManualLedgerEdit() {
+    resetManualLedgerForm();
+}
+function openLedgerEntrySelectModal() {
+    const modal = document.getElementById('ledgerEntrySelectModal');
+    if (!modal) return;
+    const searchInput = document.getElementById('ledgerEntrySelectSearch');
+    if (searchInput) searchInput.value = '';
+    modal.classList.remove('hidden');
+    renderLedgerEntrySelectList();
+}
+function closeLedgerEntrySelectModal() {
+    const modal = document.getElementById('ledgerEntrySelectModal');
+    if (modal) modal.classList.add('hidden');
+}
+function renderLedgerEntrySelectList() {
+    const tbody = document.getElementById('ledgerEntrySelectListBody');
+    if (!tbody) return;
+    const search = String(document.getElementById('ledgerEntrySelectSearch')?.value || '').trim().toLowerCase();
+    const manualRows = (Array.isArray(currentLedgerRows) ? currentLedgerRows : []).filter(isManualLedgerEntry).filter(row => {
+        if (!search) return true;
+        const particulars = String(row.particulars || '').toLowerCase();
+        const amt = String(row.amount || '').toLowerCase();
+        return particulars.includes(search) || amt.includes(search);
+    });
+    tbody.innerHTML = '';
+    if (manualRows.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-gray-500">No manual ledger entries found for this party.</td></tr>`;
+        return;
+    }
+    manualRows.forEach(row => {
+        const isDebit = String(row.type || '').toLowerCase() === 'debit';
+        const debitText = isDebit ? formatCurrency(row.amount) : '-';
+        const creditText = !isDebit ? formatCurrency(row.amount) : '-';
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-blue-50';
+        tr.innerHTML = `
+            <td class="px-3 py-2 whitespace-nowrap">${escapeHtml(formatDisplayDate(row.date || '-'))}</td>
+            <td class="px-3 py-2">${escapeHtml(row.particulars || '-')}</td>
+            <td class="px-3 py-2 text-right text-rose-600 font-medium">${escapeHtml(debitText)}</td>
+            <td class="px-3 py-2 text-right text-emerald-600 font-medium">${escapeHtml(creditText)}</td>
+            <td class="px-3 py-2 text-center">
+                <button onclick="selectLedgerEntryToEdit(${row.id})" class="bg-amber-500 hover:bg-amber-600 text-white font-medium px-3 py-1 rounded text-xs transition">Edit</button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+function selectLedgerEntryToEdit(id) {
+    closeLedgerEntrySelectModal();
+    editManualLedgerEntry(id);
+}
+
+// Raw Material Usage & Received modal functions
+function openRawMaterialUsageModal(productName, unitType = 'Pcs', rowId = null) {
+    const modal = document.getElementById('rawMaterialUsageModal');
+    if (!modal) return;
+    document.getElementById('rawMaterialUsageRowId').value = rowId ? String(rowId) : '';
+    document.getElementById('rawMaterialUsageProductName').value = productName || '';
+    document.getElementById('rawMaterialUsageUnitType').value = normalizeUnitType(unitType) || 'Pcs';
+    const dateEl = document.getElementById('rawMaterialUsageDate');
+    const today = new Date().toISOString().slice(0, 10);
+    dateEl.value = today;
+    const partySelect = document.getElementById('rawMaterialUsagePartyId');
+    if (partySelect) {
+        partySelect.innerHTML = '<option value="">Select Party</option>';
+        (currentParties || []).forEach(p => {
+            partySelect.innerHTML += `<option value="${p.id}">${escapeHtml(p.name)}</option>`;
+        });
+        if (currentParties && currentParties.length > 0) {
+            partySelect.value = String(currentParties[0].id);
+        }
+    }
+    const qtyEl = document.getElementById('rawMaterialUsageQty');
+    const purposeEl = document.getElementById('rawMaterialUsagePurpose');
+    const titleEl = document.getElementById('rawMaterialUsageModalTitle');
+    if (rowId) {
+        const row = (rawMaterialTransactions || []).find(r => Number(r.id) === Number(rowId));
+        if (row) {
+            if (titleEl) titleEl.textContent = 'Update Material Usage';
+            if (row.date) dateEl.value = row.date;
+            if (partySelect && row.party_id) partySelect.value = String(row.party_id);
+            qtyEl.value = Number(row.quantity || 0).toFixed(2);
+            purposeEl.value = row.notes || row.product_details || '';
+        }
+    } else {
+        if (titleEl) titleEl.textContent = 'Record Material Usage';
+        qtyEl.value = '';
+        purposeEl.value = '';
+    }
+    modal.classList.remove('hidden');
+    qtyEl.focus();
+}
+
+function closeRawMaterialUsageModal() {
+    const modal = document.getElementById('rawMaterialUsageModal');
+    if (modal) modal.classList.add('hidden');
+}
+
+async function saveRawMaterialUsage() {
+    const rowId = Number(document.getElementById('rawMaterialUsageRowId')?.value || 0);
+    const productName = String(document.getElementById('rawMaterialUsageProductName')?.value || '').trim();
+    const unitType = String(document.getElementById('rawMaterialUsageUnitType')?.value || 'Pcs').trim();
+    const date = String(document.getElementById('rawMaterialUsageDate')?.value || '').trim();
+    const partyId = Number(document.getElementById('rawMaterialUsagePartyId')?.value || currentParties[0]?.id || 0);
+    const qty = Number(document.getElementById('rawMaterialUsageQty')?.value || 0);
+    const purpose = String(document.getElementById('rawMaterialUsagePurpose')?.value || '').trim();
+
+    if (!productName || !date || !qty || qty <= 0) {
+        window.alert('Product name, date, and valid quantity used are required.');
+        return;
+    }
+    if (!partyId) {
+        window.alert('Please select a party or department.');
+        return;
+    }
+
+    const payload = {
+        date,
+        party_id: partyId,
+        entry_type: 'OUT',
+        product_name: productName,
+        quantity: qty,
+        unit_type: unitType,
+        rate: 0,
+        product_details: purpose,
+        notes: purpose
+    };
+
+    let result;
+    if (rowId) {
+        result = await window.api.updateRawMaterialTransaction(rowId, payload);
+    } else {
+        result = await window.api.addRawMaterialTransaction(payload);
+    }
+
+    if (!result || !result.success) {
+        window.alert(result?.message || 'Failed to record material usage.');
+        return;
+    }
+
+    closeRawMaterialUsageModal();
+    await refreshRawMaterialStock();
+    await refreshRawMaterialLedger();
+    await refreshRawMaterialTransactions();
+    showToast(rowId ? 'Usage entry updated.' : 'Material usage recorded successfully.');
+}
+
+function openRawMaterialReceivedModal(productName, unitType = 'Pcs') {
+    const modal = document.getElementById('rawMaterialReceivedModal');
+    if (!modal) return;
+    document.getElementById('rawMaterialReceivedProductName').value = productName || '';
+    document.getElementById('rawMaterialReceivedUnitType').value = normalizeUnitType(unitType) || 'Pcs';
+    const dateEl = document.getElementById('rawMaterialReceivedDate');
+    const today = new Date().toISOString().slice(0, 10);
+    dateEl.value = today;
+    const partySelect = document.getElementById('rawMaterialReceivedPartyId');
+    if (partySelect) {
+        partySelect.innerHTML = '<option value="">Select Supplier</option>';
+        (currentParties || []).forEach(p => {
+            partySelect.innerHTML += `<option value="${p.id}">${escapeHtml(p.name)}</option>`;
+        });
+        if (currentParties && currentParties.length > 0) {
+            partySelect.value = String(currentParties[0].id);
+        }
+    }
+    document.getElementById('rawMaterialReceivedQty').value = '';
+    document.getElementById('rawMaterialReceivedRate').value = '';
+    document.getElementById('rawMaterialReceivedNotes').value = '';
+    modal.classList.remove('hidden');
+    document.getElementById('rawMaterialReceivedQty').focus();
+}
+
+function closeRawMaterialReceivedModal() {
+    const modal = document.getElementById('rawMaterialReceivedModal');
+    if (modal) modal.classList.add('hidden');
+}
+
+async function saveRawMaterialReceived() {
+    const productName = String(document.getElementById('rawMaterialReceivedProductName')?.value || '').trim();
+    const unitType = String(document.getElementById('rawMaterialReceivedUnitType')?.value || 'Pcs').trim();
+    const date = String(document.getElementById('rawMaterialReceivedDate')?.value || '').trim();
+    const partyId = Number(document.getElementById('rawMaterialReceivedPartyId')?.value || 0);
+    const qty = Number(document.getElementById('rawMaterialReceivedQty')?.value || 0);
+    const rate = Number(document.getElementById('rawMaterialReceivedRate')?.value || 0);
+    const notes = String(document.getElementById('rawMaterialReceivedNotes')?.value || '').trim();
+
+    if (!productName || !date || !qty || qty <= 0) {
+        window.alert('Product name, date, and valid received quantity are required.');
+        return;
+    }
+    if (!partyId) {
+        window.alert('Please select a supplier / party.');
+        return;
+    }
+
+    const payload = {
+        date,
+        party_id: partyId,
+        entry_type: 'IN',
+        product_name: productName,
+        quantity: qty,
+        unit_type: unitType,
+        rate: rate,
+        product_details: notes,
+        notes: notes
+    };
+
+    const result = await window.api.addRawMaterialTransaction(payload);
+    if (!result || !result.success) {
+        window.alert(result?.message || 'Failed to record received material.');
+        return;
+    }
+
+    closeRawMaterialReceivedModal();
+    await refreshRawMaterialStock();
+    await refreshRawMaterialLedger();
+    await refreshRawMaterialTransactions();
+    showToast('Received material recorded successfully.');
+}
+
+window.openPurchaseSelectModal = openPurchaseSelectModal;
+window.closePurchaseSelectModal = closePurchaseSelectModal;
+window.renderPurchaseSelectList = renderPurchaseSelectList;
+window.selectPurchaseToEdit = selectPurchaseToEdit;
+window.openSaleSelectModal = openSaleSelectModal;
+window.closeSaleSelectModal = closeSaleSelectModal;
+window.renderSaleSelectList = renderSaleSelectList;
+window.selectSaleToEdit = selectSaleToEdit;
+window.cancelManualLedgerEdit = cancelManualLedgerEdit;
+window.openLedgerEntrySelectModal = openLedgerEntrySelectModal;
+window.closeLedgerEntrySelectModal = closeLedgerEntrySelectModal;
+window.renderLedgerEntrySelectList = renderLedgerEntrySelectList;
+window.selectLedgerEntryToEdit = selectLedgerEntryToEdit;
+window.openRawMaterialUsageModal = openRawMaterialUsageModal;
+window.closeRawMaterialUsageModal = closeRawMaterialUsageModal;
+window.saveRawMaterialUsage = saveRawMaterialUsage;
+window.openRawMaterialReceivedModal = openRawMaterialReceivedModal;
+window.closeRawMaterialReceivedModal = closeRawMaterialReceivedModal;
+window.saveRawMaterialReceived = saveRawMaterialReceived;
 function initPlatformStyles() {
     if (window.api && window.api.getPlatform) {
         try {

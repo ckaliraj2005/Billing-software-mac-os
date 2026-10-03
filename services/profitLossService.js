@@ -211,18 +211,23 @@ const getDailyStmt = db.prepare(
    ORDER BY dg.date DESC, dg.name ASC`
 );
 
-const getItemProfitStmt = db.prepare(
-  `WITH purchase_cost AS (
-     SELECT product_id,
-            CASE WHEN SUM(boxes * pieces) = 0 THEN 0
-                 ELSE SUM(total) / SUM(boxes * pieces)
-            END AS avg_purchase_rate
-     FROM purchase_items
-     GROUP BY product_id
+const getCogsAndItemProfitStmt = db.prepare(
+  `WITH product_purchase_cost AS (
+     SELECT p.id AS product_id,
+            COALESCE(
+              (SELECT CASE WHEN SUM(pi.boxes * pi.pieces) > 0 THEN SUM(pi.rate * pi.boxes * pi.pieces) / SUM(pi.boxes * pi.pieces) ELSE NULL END 
+               FROM purchase_items pi WHERE pi.product_id = p.id),
+              (SELECT gs.purchase_rate FROM godown_stock gs WHERE gs.product_id = p.id AND gs.purchase_rate > 0 ORDER BY gs.id DESC LIMIT 1),
+              p.rate,
+              0
+            ) AS unit_purchase_cost
+     FROM products p
    )
-   SELECT COALESCE(SUM((si.rate - COALESCE(pc.avg_purchase_rate, 0)) * (si.boxes * si.pieces)), 0) AS item_profit
+   SELECT 
+     COALESCE(SUM((si.boxes * si.pieces) * COALESCE(ppc.unit_purchase_cost, 0)), 0) AS total_cogs,
+     COALESCE(SUM((si.rate - COALESCE(ppc.unit_purchase_cost, 0)) * (si.boxes * si.pieces)), 0) AS item_profit
    FROM sale_items si
-   LEFT JOIN purchase_cost pc ON pc.product_id = si.product_id`
+   LEFT JOIN product_purchase_cost ppc ON ppc.product_id = si.product_id`
 );
 
 function getTotalSales() {
@@ -251,17 +256,20 @@ function getProfitLoss() {
   const otherProfit = getOtherProfitTotal();
   const otherLoss = getOtherLossTotal();
   const adjustment = otherProfit - otherLoss;
-  const netProfit = totalSales - totalPurchase + adjustment;
-  const itemBasedProfit = getItemProfitStmt.get().item_profit || 0;
+  const cogsAndProfit = getCogsAndItemProfitStmt.get();
+  const cogs = cogsAndProfit?.total_cogs || 0;
+  const itemBasedProfit = cogsAndProfit?.item_profit || 0;
+  const netProfit = itemBasedProfit + adjustment;
 
   return {
     totalSales,
     totalPurchase,
+    cogs,
+    itemBasedProfit,
     otherProfit,
     otherLoss,
     adjustment,
-    netProfit,
-    itemBasedProfit
+    netProfit
   };
 }
 

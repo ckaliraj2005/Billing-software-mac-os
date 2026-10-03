@@ -635,8 +635,8 @@ ipcMain.handle('delete-raw-material-transaction', async (_event, id) => {
   return rawMaterialService.deleteRawMaterialTransaction(id);
 });
 
-ipcMain.handle('update-raw-material-product-name', async (_event, oldName, newName) => {
-  return rawMaterialService.updateRawMaterialProductName(oldName, newName);
+ipcMain.handle('update-raw-material-product-name', async (_event, oldName, newName, unitType) => {
+  return rawMaterialService.updateRawMaterialProductName(oldName, newName, unitType);
 });
 
 ipcMain.handle('delete-raw-material-product', async (_event, productName) => {
