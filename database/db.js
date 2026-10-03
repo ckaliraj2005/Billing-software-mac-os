@@ -441,6 +441,7 @@ const godownStockColumns = db.prepare(`PRAGMA table_info(godown_stock)`).all();
 const hasGodownStockUnitTypeColumn = godownStockColumns.some((col) => col.name === 'unit_type');
 const hasGodownStockLastBillNoColumn = godownStockColumns.some((col) => col.name === 'last_purchase_bill_no');
 const hasGodownStockAgentCommissionColumn = godownStockColumns.some((col) => col.name === 'agent_commission');
+const hasGodownStockDiscountColumn = godownStockColumns.some((col) => col.name === 'discount');
 
 const rmtColumns = db.prepare(`PRAGMA table_info(raw_material_transactions)`).all();
 const hasPurchasePlaceColumn = rmtColumns.some((col) => col.name === 'purchase_place');
@@ -514,6 +515,10 @@ if (!hasGodownStockLastBillNoColumn) {
 
 if (!hasGodownStockAgentCommissionColumn) {
   db.prepare(`ALTER TABLE godown_stock ADD COLUMN agent_commission REAL NOT NULL DEFAULT 0`).run();
+}
+
+if (!hasGodownStockDiscountColumn) {
+  db.prepare(`ALTER TABLE godown_stock ADD COLUMN discount REAL NOT NULL DEFAULT 0`).run();
 }
 
 if (!hasPurchaseBillNoColumn) {

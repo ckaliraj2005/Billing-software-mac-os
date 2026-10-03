@@ -1430,6 +1430,23 @@ function printPartyStatement() {
     printWindow.focus();
     printWindow.print();
 }
+async function sharePartyStatementWhatsApp() {
+    const name = document.getElementById('partyStatementName')?.textContent || 'Customer';
+    const meta = document.getElementById('partyStatementMeta')?.textContent || '';
+    const phone = (meta.split('/')[0] || '').replace(/[^0-9]/g, '');
+    const bal = document.getElementById('partyStatementClosingBalance')?.textContent || '0.00';
+    const text = `*Party Statement: ${ name }*\nBalance: ${ bal }\nThank you!`;
+    const result = await window.api.shareWhatsApp({
+        phone,
+        message: text
+    });
+    if (!result || !result.success) {
+        window.alert(result?.message || 'Unable to open WhatsApp.');
+        return;
+    }
+    showToast('Opening WhatsApp...');
+}
+window.sharePartyStatementWhatsApp = sharePartyStatementWhatsApp;
 function togglePaymentOtherMode(prefix) {
     const modeSelect = document.getElementById(`payment${ prefix }Mode`) || document.getElementById(`editPaymentMode`);
     const otherInput = document.getElementById(`payment${ prefix }OtherMode`) || document.getElementById(`editPaymentOtherMode`);
@@ -1909,7 +1926,8 @@ function renderLedgerBook(rows) {
         return;
     }
     let html = '';
-    summary.rows.forEach(entry => {
+    const displayRows = [...summary.rows].reverse();
+    displayRows.forEach(entry => {
         const paymentId = Number(entry?.payment_id) || 0;
         const purchaseId = Number(entry?.purchase_id) || 0;
         const saleId = Number(entry?.sale_id) || 0;
@@ -2025,7 +2043,7 @@ function renderLedgerPartyTable() {
         body.innerHTML += `
       <tr class="border-t ${ isActive ? 'bg-blue-50' : '' }">
         <td class="px-4 py-3 align-middle">${ index + 1 }</td>
-        <td class="px-4 py-3 align-middle">${ escapeHtml(party.name || '-') }</td>
+        <td class="px-4 py-3 align-middle font-medium text-blue-700 hover:underline cursor-pointer" onclick="openLedgerForParty(${ party.id })" title="Click to open ledger">${ escapeHtml(party.name || '-') }</td>
         <td class="px-4 py-3 align-middle">${ escapeHtml(party.phone || '-') }</td>
         <td class="px-4 py-3 align-middle">${ escapeHtml(party.city || '-') }</td>
         <td class="px-4 py-3 align-middle"><button onclick="openLedgerForParty(${ party.id })" class="bg-blue-700 text-white px-3 py-1 rounded">Open</button></td>
@@ -2385,6 +2403,20 @@ function calculatePurchaseLineTotal() {
     const cases = Number(document.getElementById('purchaseBoxes').value) || 0;
     const qtyPerCase = Number(document.getElementById('purchasePieces').value) || 0;
     const rate = Number(document.getElementById('purchaseRate').value) || 0;
+
+    const discInput = document.getElementById('purchaseDiscount');
+    if (discInput && discInput.value === '' && (cases > 0 || rate > 0)) {
+        discInput.value = '50';
+    }
+    const packInput = document.getElementById('purchasePackingCharge');
+    if (packInput && packInput.value === '' && (cases > 0 || rate > 0)) {
+        packInput.value = '3';
+    }
+    const commInput = document.getElementById('purchaseAgentCommission');
+    if (commInput && commInput.value === '' && (cases > 0 || rate > 0)) {
+        commInput.value = '3';
+    }
+
     const discountValue = Number(document.getElementById('purchaseDiscount').value) || 0;
     const packingCharge = Number(document.getElementById('purchasePackingCharge').value) || 0;
     const transportCharge = Number(document.getElementById('purchaseTransportCharge').value) || 0;
@@ -2521,7 +2553,9 @@ function addPurchaseItem() {
         window.alert('Discount cannot be greater than line amount.');
         return;
     }
-    const total = lineBase - discountAmount + packingAmount + transportCharge + commissionAmount;
+    const manualTotal = Number(document.getElementById('purchaseLineTotal').value);
+    const computedTotal = lineBase - discountAmount + packingAmount + transportCharge + commissionAmount;
+    const total = Number.isFinite(manualTotal) && manualTotal > 0 ? manualTotal : computedTotal;
     purchaseItemsDraft.push({
         product_name: productName,
         boxes: cases,
@@ -2844,11 +2878,11 @@ function renderStock(rows) {
         <td class="px-4 py-3 align-middle">${ escapeHtml(unitType) }</td>
         <td class="px-4 py-3 align-middle text-right font-medium">${ escapeHtml(availableStock) }</td>
         <td class="px-4 py-3 align-middle text-right">${ Number(row.rate).toFixed(2) }</td>
+        <td class="px-4 py-3 align-middle text-right">${ Number(row.discount || 0).toFixed(2) }%</td>
         <td class="px-4 py-3 align-middle text-right">${ parseFloat(Number(row.packing_charge || 0).toFixed(2)) }%</td>
         <td class="px-4 py-3 align-middle text-right">${ Number(row.transport_charge || 0).toFixed(2) }</td>
-        <td class="px-4 py-3 align-middle text-right">${ Number(row.agent_commission !== undefined ? row.agent_commission : (row.commission || 0)).toFixed(2) }</td>
+        <td class="px-4 py-3 align-middle text-right">${ Number(row.agent_commission !== undefined ? row.agent_commission : (row.commission || 0)).toFixed(2) }%</td>
         <td class="px-4 py-3 align-middle text-right">${ Number(row.selling_rate || 0).toFixed(2) }</td>
-        <td class="px-4 py-3 align-middle text-right font-semibold">${ stockValue.toFixed(2) }</td>
         <td class="px-4 py-3 align-middle text-center whitespace-nowrap">
           <div class="inline-flex items-center justify-center gap-2">
             <button onclick="editGodownStockItem(${ Number(row.product_id) })" class="bg-amber-500 hover:bg-amber-600 text-white font-medium px-3 py-1.5 rounded-lg shadow-sm transition active:scale-95 text-xs">Edit</button>
@@ -2911,6 +2945,14 @@ async function editGodownStockItem(productId) {
             value: Number(row.rate || 0)
         },
         {
+            key: 'discount',
+            label: 'Discount (%)',
+            type: 'number',
+            step: '0.01',
+            min: 0,
+            value: Number(row.discount || 0)
+        },
+        {
             key: 'packing_charge',
             label: 'Packing Charge (%)',
             type: 'number',
@@ -2928,7 +2970,7 @@ async function editGodownStockItem(productId) {
         },
         {
             key: 'agent_commission',
-            label: 'Agent Commission',
+            label: 'Agent Commission (%)',
             type: 'number',
             step: '0.01',
             min: 0,
@@ -2952,6 +2994,7 @@ async function editGodownStockItem(productId) {
         pieces_per_box: Number(values.pieces_per_box),
         unit_type: String(values.unit_type || '').trim(),
         purchase_rate: Number(values.purchase_rate),
+        discount: Number(values.discount || 0),
         packing_charge: Number(values.packing_charge),
         transport_charge: Number(values.transport_charge),
         agent_commission: Number(values.agent_commission || 0),
@@ -3261,10 +3304,31 @@ function renderRawMaterialLedger(rows) {
 }
 async function refreshRawMaterialLedger() {
     const query = String(document.getElementById('rawMaterialLedgerSearch')?.value || '').trim();
-    const rows = await window.api.getRawMaterialTransactions({
+    const productFilterEl = document.getElementById('rawMaterialLedgerProductFilter');
+    const selectedProd = productFilterEl ? String(productFilterEl.value || '').trim().toLowerCase() : '';
+    let rows = (await window.api.getRawMaterialTransactions({
         query,
         type: ''
-    });
+    })) || [];
+
+    if (productFilterEl) {
+        const currentVal = productFilterEl.value;
+        const productsSet = new Set();
+        rows.forEach(r => {
+            if (r.product_name) productsSet.add(r.product_name);
+        });
+        const optionsList = Array.from(productsSet).sort();
+        let optHtml = '<option value="">All Products</option>';
+        optionsList.forEach(p => {
+            optHtml += `<option value="${ escapeHtml(p) }" ${ p === currentVal ? 'selected' : '' }>${ escapeHtml(p) }</option>`;
+        });
+        productFilterEl.innerHTML = optHtml;
+    }
+
+    if (selectedProd) {
+        rows = rows.filter(r => String(r.product_name || '').toLowerCase() === selectedProd);
+    }
+
     renderRawMaterialLedger(rows || []);
 }
 function editRawMaterialLedgerRow(id) {
@@ -3441,6 +3505,7 @@ function resetSaleForm() {
     setChecked('saleUseTransport', true);
     setChecked('saleUseCommission', false);
     setChecked('saleUseAgentCommission', false);
+    setChecked('saleUseGst', false);
     setValue('saleDiscount', '0');
     setValue('saleDiscountMode', 'percent');
     setValue('saleDeliveryCharges', '0');
@@ -3449,15 +3514,55 @@ function resetSaleForm() {
     setValue('saleAgentName', '');
     setValue('saleAgentCommission', '0');
     setValue('saleAgentCommissionMode', 'percent');
+    setValue('saleGstPercent', '18');
     toggleAgentCommissionFields();
+    toggleSaleGstFields();
     setValue('saleUnitType', 'Pcs');
+    saleFinalTotalIsManual = false;
 }
+
+let saleFinalTotalIsManual = false;
+function onSaleFinalTotalManualInput() {
+    saleFinalTotalIsManual = true;
+}
+window.onSaleFinalTotalManualInput = onSaleFinalTotalManualInput;
+
+function toggleSaleGstFields() {
+    const isChecked = Boolean(document.getElementById('saleUseGst')?.checked);
+    const container = document.getElementById('saleGstFields');
+    if (container) {
+        container.classList.toggle('hidden', !isChecked);
+    }
+    saleFinalTotalIsManual = false;
+    recalculateSaleFinalTotal();
+}
+window.toggleSaleGstFields = toggleSaleGstFields;
+
+function setSaleGstPreset(percent) {
+    const el = document.getElementById('saleGstPercent');
+    if (el) {
+        el.value = String(percent);
+    }
+    const check = document.getElementById('saleUseGst');
+    if (check && !check.checked) {
+        check.checked = true;
+        const container = document.getElementById('saleGstFields');
+        if (container) {
+            container.classList.remove('hidden');
+        }
+    }
+    saleFinalTotalIsManual = false;
+    recalculateSaleFinalTotal();
+}
+window.setSaleGstPreset = setSaleGstPreset;
+
 function toggleAgentCommissionFields() {
     const isChecked = Boolean(document.getElementById('saleUseAgentCommission')?.checked);
     const container = document.getElementById('saleAgentCommissionFields');
     if (container) {
         container.classList.toggle('hidden', !isChecked);
     }
+    saleFinalTotalIsManual = false;
     recalculateSaleFinalTotal();
 }
 window.toggleAgentCommissionFields = toggleAgentCommissionFields;
@@ -3482,9 +3587,16 @@ function recalculateSaleFinalTotal() {
     const commission = document.getElementById('saleUseCommission').checked ? packingAmount : 0;
     const agentCommission = Boolean(document.getElementById('saleUseAgentCommission')?.checked) ? agentAmount : 0;
 
-    const finalTotal = Math.max(0, grand - discount) + transport + commission + agentCommission;
+    const useGst = Boolean(document.getElementById('saleUseGst')?.checked);
+    const gstPercent = Number(document.getElementById('saleGstPercent')?.value) || 0;
+    const baseAfterDiscount = Math.max(0, grand - discount);
+    const gstAmount = useGst ? (baseAfterDiscount * gstPercent / 100) : 0;
+
+    const computedFinalTotal = baseAfterDiscount + transport + commission + agentCommission + gstAmount;
     document.getElementById('saleGrandTotal').value = grand.toFixed(2);
-    document.getElementById('saleFinalTotal').value = finalTotal.toFixed(2);
+    if (!saleFinalTotalIsManual) {
+        document.getElementById('saleFinalTotal').value = computedFinalTotal.toFixed(2);
+    }
 }
 function renderSaleDraft() {
     const table = document.getElementById('saleItemsTableBody');
@@ -3522,7 +3634,9 @@ function addSaleItem() {
         window.alert('Duplicate product in the same invoice is not allowed.');
         return;
     }
-    const total = cases * qtyPerCase * rate;
+    const manualLineTotal = Number(document.getElementById('saleLineTotal')?.value);
+    const computedTotal = cases * qtyPerCase * rate;
+    const total = Number.isFinite(manualLineTotal) && manualLineTotal > 0 ? manualLineTotal : computedTotal;
     saleItemsDraft.push({
         product_id: product.id,
         product_name: product.name,
@@ -3561,6 +3675,7 @@ async function saveSaleInvoice() {
         deliveryFeedback
     ].filter(Boolean).join(' | ');
     const saleType = 'cash';
+    const finalTotalInput = Number(document.getElementById('saleFinalTotal')?.value);
     const discountRaw = Number(document.getElementById('saleDiscount').value) || 0;
     const deliveryRaw = Number(document.getElementById('saleDeliveryCharges').value) || 0;
     const commissionRaw = Number(document.getElementById('saleCommissionCharges').value) || 0;
@@ -3611,6 +3726,7 @@ async function saveSaleInvoice() {
         packing_charges: commissionCharges,
         agent_name: agentName,
         agent_commission: agentCommission,
+        total: Number.isFinite(finalTotalInput) && finalTotalInput > 0 ? finalTotalInput : undefined,
         items: saleItemsDraft
     };
     const result = editingId ? await window.api.updateSale(editingId, payload) : await window.api.addSale(payload);
@@ -4189,6 +4305,7 @@ function renderPurchaseRates(rows) {
         <td class="px-4 py-3 align-middle text-left whitespace-nowrap">${ escapeHtml(row.product_name) }</td>
         <td class="px-4 py-3 align-middle text-center whitespace-nowrap">${ escapeHtml(row.unit_type || 'Pcs') }</td>
         <td class="px-4 py-3 align-middle text-right whitespace-nowrap">${ formatCurrency(row.rate) } ${ isLatest ? '<span class="text-xs text-amber-700 block">(Latest)</span>' : '' }</td>
+        <td class="px-4 py-3 align-middle text-right whitespace-nowrap">${ formatCurrency(row.discount_percent || 0) }</td>
         <td class="px-4 py-3 align-middle text-right whitespace-nowrap">${ formatCurrency(row.transport_charge || 0) }</td>
         <td class="px-4 py-3 align-middle text-right whitespace-nowrap">${ formatCurrency(commission) }</td>
         <td class="px-4 py-3 align-middle text-right whitespace-nowrap">${ formatCurrency(row.packing_charge || 0) }</td>
@@ -4230,6 +4347,16 @@ async function editPurchaseRate(id) {
             step: '0.01',
             min: 0,
             value: row.discount_percent || 0
+        },
+        {
+            key: 'discount_mode',
+            label: 'Discount Type',
+            type: 'select',
+            value: 'percent',
+            options: [
+                'percent',
+                'amount'
+            ]
         },
         {
             key: 'unit_type',
@@ -4288,6 +4415,7 @@ async function editPurchaseRate(id) {
     const result = await window.api.updatePurchaseRate(id, {
         rate: Number(values.rate),
         discount_percent: Number(values.discount_percent),
+        discount_mode: String(values.discount_mode || 'percent').trim(),
         unit_type: String(values.unit_type || '').trim(),
         selling_rate: Number(values.selling_rate),
         packing_charge: Number(values.packing_charge),
@@ -4622,7 +4750,11 @@ function getNextSalesReturnBillNo() {
     });
     return String(maxBillNo + 1);
 }
+let editingPurchaseReturnId = null;
+let editingSalesReturnId = null;
+
 function resetPurchaseReturnForm() {
+    editingPurchaseReturnId = null;
     currentPurchaseReturnReference = null;
     purchaseReturnItemsDraft = [];
     const dateEl = document.getElementById('purchaseReturnDate');
@@ -4645,9 +4777,14 @@ function resetPurchaseReturnForm() {
     if (notesEl) {
         notesEl.value = '';
     }
+    const submitBtn = document.getElementById('purchaseReturnSubmitBtn');
+    if (submitBtn) {
+        submitBtn.textContent = 'Save Purchase Return';
+    }
     renderPurchaseReturnItemsDraft();
 }
 function resetSalesReturnForm() {
+    editingSalesReturnId = null;
     currentSalesReturnReference = null;
     salesReturnItemsDraft = [];
     const dateEl = document.getElementById('salesReturnDate');
@@ -4669,6 +4806,10 @@ function resetSalesReturnForm() {
     }
     if (notesEl) {
         notesEl.value = '';
+    }
+    const submitBtn = document.getElementById('salesReturnSubmitBtn');
+    if (submitBtn) {
+        submitBtn.textContent = 'Save Sales Return';
     }
     renderSalesReturnItemsDraft();
 }
@@ -4746,8 +4887,11 @@ function renderPurchaseReturns(rows) {
         <td class="px-4 py-3 align-middle">${ escapeHtml(formatDisplayDate(row.date || '-')) }</td>
         <td class="px-4 py-3 align-middle">${ escapeHtml(row.party_name || '-') }</td>
         <td class="px-4 py-3 align-middle text-right">${ Number(row.total || 0).toFixed(2) }</td>
-        <td class="px-4 py-3 align-middle">
-          <button onclick="removePurchaseReturn(${ Number(row.id) })" class="bg-red-600 text-white px-3 py-1 rounded">Delete</button>
+        <td class="px-4 py-3 align-middle whitespace-nowrap">
+          <div class="inline-flex items-center gap-1.5">
+            <button onclick="startEditPurchaseReturn(${ Number(row.id) })" class="bg-amber-500 hover:bg-amber-600 text-white font-medium px-2.5 py-1 rounded text-xs shadow-sm">Edit</button>
+            <button onclick="removePurchaseReturn(${ Number(row.id) })" class="bg-rose-600 hover:bg-rose-700 text-white font-medium px-2.5 py-1 rounded text-xs shadow-sm">Delete</button>
+          </div>
         </td>
       </tr>
     `;
@@ -4775,8 +4919,11 @@ function renderSalesReturns(rows) {
         <td class="px-4 py-3 align-middle">${ escapeHtml(formatDisplayDate(row.date || '-')) }</td>
         <td class="px-4 py-3 align-middle">${ escapeHtml(row.party_name || '-') }</td>
         <td class="px-4 py-3 align-middle text-right">${ Number(row.total || 0).toFixed(2) }</td>
-        <td class="px-4 py-3 align-middle">
-          <button onclick="removeSalesReturn(${ Number(row.id) })" class="bg-red-600 text-white px-3 py-1 rounded">Delete</button>
+        <td class="px-4 py-3 align-middle whitespace-nowrap">
+          <div class="inline-flex items-center gap-1.5">
+            <button onclick="startEditSalesReturn(${ Number(row.id) })" class="bg-amber-500 hover:bg-amber-600 text-white font-medium px-2.5 py-1 rounded text-xs shadow-sm">Edit</button>
+            <button onclick="removeSalesReturn(${ Number(row.id) })" class="bg-rose-600 hover:bg-rose-700 text-white font-medium px-2.5 py-1 rounded text-xs shadow-sm">Delete</button>
+          </div>
         </td>
       </tr>
     `;
@@ -4790,6 +4937,59 @@ async function refreshSalesReturns() {
     const rows = await window.api.getSalesReturns();
     renderSalesReturns(rows || []);
 }
+async function startEditSalesReturn(id) {
+    const row = currentSalesReturnRows.find(item => Number(item.id) === Number(id));
+    if (!row) {
+        return;
+    }
+    editingSalesReturnId = Number(id);
+    showView('salesReturn');
+    const dateEl = document.getElementById('salesReturnDate');
+    const modeEl = document.getElementById('salesReturnMode');
+    const billNoEl = document.getElementById('salesReturnBillNo');
+    const refEl = document.getElementById('salesReturnReferenceId');
+    const notesEl = document.getElementById('salesReturnNotes');
+    if (dateEl) dateEl.value = row.date || '';
+    if (modeEl) modeEl.value = row.mode || 'Credit';
+    if (billNoEl) billNoEl.value = row.bill_no || '';
+    if (notesEl) notesEl.value = row.notes || '';
+    if (refEl && row.reference_sale_id) {
+        refEl.value = String(row.reference_sale_id);
+        await onSalesReturnReferenceChange();
+    }
+    const submitBtn = document.getElementById('salesReturnSubmitBtn');
+    if (submitBtn) {
+        submitBtn.textContent = 'Update Sales Return';
+    }
+}
+async function startEditPurchaseReturn(id) {
+    const row = currentPurchaseReturnRows.find(item => Number(item.id) === Number(id));
+    if (!row) {
+        return;
+    }
+    editingPurchaseReturnId = Number(id);
+    showView('purchaseReturn');
+    const dateEl = document.getElementById('purchaseReturnDate');
+    const modeEl = document.getElementById('purchaseReturnMode');
+    const billNoEl = document.getElementById('purchaseReturnBillNo');
+    const refEl = document.getElementById('purchaseReturnReferenceId');
+    const notesEl = document.getElementById('purchaseReturnNotes');
+    if (dateEl) dateEl.value = row.date || '';
+    if (modeEl) modeEl.value = row.mode || 'Credit';
+    if (billNoEl) billNoEl.value = row.bill_no || '';
+    if (notesEl) notesEl.value = row.notes || '';
+    if (refEl && row.reference_purchase_id) {
+        refEl.value = String(row.reference_purchase_id);
+        await onPurchaseReturnReferenceChange();
+    }
+    const submitBtn = document.getElementById('purchaseReturnSubmitBtn');
+    if (submitBtn) {
+        submitBtn.textContent = 'Update Purchase Return';
+    }
+}
+window.startEditSalesReturn = startEditSalesReturn;
+window.startEditPurchaseReturn = startEditPurchaseReturn;
+
 async function submitPurchaseReturn() {
     const referenceId = Number(document.getElementById('purchaseReturnReferenceId')?.value || 0);
     const date = String(document.getElementById('purchaseReturnDate')?.value || '').trim();
@@ -4810,7 +5010,9 @@ async function submitPurchaseReturn() {
         notes,
         items: purchaseReturnItemsDraft
     };
-    const result = await window.api.addPurchaseReturn(payload);
+    const result = editingPurchaseReturnId
+        ? await window.api.updatePurchaseReturn(editingPurchaseReturnId, payload)
+        : await window.api.addPurchaseReturn(payload);
     if (!result || !result.success) {
         window.alert(result?.message || 'Unable to save purchase return.');
         return;
@@ -4820,7 +5022,7 @@ async function submitPurchaseReturn() {
     await refreshPurchases();
     await refreshStock();
     await loadLedger();
-    showToast('Purchase return saved.');
+    showToast(editingPurchaseReturnId ? 'Purchase return updated.' : 'Purchase return saved.');
 }
 async function submitSalesReturn() {
     const referenceId = Number(document.getElementById('salesReturnReferenceId')?.value || 0);
@@ -4842,7 +5044,9 @@ async function submitSalesReturn() {
         notes,
         items: salesReturnItemsDraft
     };
-    const result = await window.api.addSalesReturn(payload);
+    const result = editingSalesReturnId
+        ? await window.api.updateSalesReturn(editingSalesReturnId, payload)
+        : await window.api.addSalesReturn(payload);
     if (!result || !result.success) {
         window.alert(result?.message || 'Unable to save sales return.');
         return;
@@ -4852,7 +5056,7 @@ async function submitSalesReturn() {
     await refreshSales();
     await refreshStock();
     await loadLedger();
-    showToast('Sales return saved.');
+    showToast(editingSalesReturnId ? 'Sales return updated.' : 'Sales return saved.');
 }
 async function removePurchaseReturn(id) {
     const result = await window.api.deletePurchaseReturn(id);
@@ -4943,18 +5147,26 @@ function renderLabourWeeklyRows(rows) {
     if (currentLabourWeeklyRows.length === 0) {
         body.innerHTML = `
       <tr>
-        <td colspan="4" class="p-3 text-center text-gray-500 flex items-center justify-center gap-2">No weekly rows found.</td>
+        <td colspan="5" class="p-3 text-center text-gray-500">No weekly attendance rows found.</td>
       </tr>
     `;
         return;
     }
     currentLabourWeeklyRows.forEach(row => {
+        const isNil = Boolean(row.is_nil);
+        const monthYear = row.month_year || '-';
+        const weekNo = row.week_no || '-';
+        const rateLabel = isNil ? 'Nil' : (Number(row.rate || 0) > 0 ? Number(row.rate).toFixed(2) : '-');
+        const hoursLabel = isNil ? 'Nil' : Number(row.total_hours || 0).toFixed(2);
+        const salaryLabel = isNil ? 'Nil' : Number(row.total_salary || 0).toFixed(2);
+
         body.innerHTML += `
-      <tr class="border-t">
-        <td class="px-4 py-3 align-middle font-semibold">${ escapeHtml(formatDisplayDate(row.week_end_saturday || '-')) }</td>
-        <td class="px-4 py-3 align-middle text-right">${ Number(row.row_count || 0) }</td>
-        <td class="px-4 py-3 align-middle text-right">${ Number(row.total_hours || 0).toFixed(2) }</td>
-        <td class="px-4 py-3 align-middle text-right font-semibold text-blue-900">${ Number(row.total_salary || 0).toFixed(2) }</td>
+      <tr class="border-t ${ isNil ? 'bg-gray-50 text-gray-400' : '' }">
+        <td class="px-4 py-3 align-middle font-medium">${ escapeHtml(monthYear) }</td>
+        <td class="px-4 py-3 align-middle font-semibold text-gray-800">${ escapeHtml(weekNo) } <span class="text-xs text-gray-400 font-normal">(${ escapeHtml(formatDisplayDate(row.week_end_saturday || '-')) })</span></td>
+        <td class="px-4 py-3 align-middle text-right">${ escapeHtml(rateLabel) }</td>
+        <td class="px-4 py-3 align-middle text-right">${ escapeHtml(hoursLabel) }</td>
+        <td class="px-4 py-3 align-middle text-right font-semibold ${ isNil ? 'text-gray-400' : 'text-blue-900' }">${ escapeHtml(salaryLabel) }</td>
       </tr>
     `;
     });

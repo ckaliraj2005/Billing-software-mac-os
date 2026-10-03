@@ -667,6 +667,10 @@ ipcMain.handle('add-purchase-return', async (_event, data) => {
   return returnService.addPurchaseReturn(data || {});
 });
 
+ipcMain.handle('update-purchase-return', async (_event, id, data) => {
+  return returnService.updatePurchaseReturn(id, data || {});
+});
+
 ipcMain.handle('delete-purchase-return', async (_event, id) => {
   return returnService.deletePurchaseReturn(id);
 });
@@ -681,6 +685,10 @@ ipcMain.handle('get-purchase-return-details', async (_event, id) => {
 
 ipcMain.handle('add-sales-return', async (_event, data) => {
   return returnService.addSalesReturn(data || {});
+});
+
+ipcMain.handle('update-sales-return', async (_event, id, data) => {
+  return returnService.updateSalesReturn(id, data || {});
 });
 
 ipcMain.handle('delete-sales-return', async (_event, id) => {

@@ -237,14 +237,14 @@
               </select>
             </div>
             <div class="grid grid-cols-3 gap-2 md:col-span-2">
-              <input id="purchaseDiscount" type="number" step="0.01" placeholder="Discount" class="border p-2 col-span-2" oninput="calculatePurchaseLineTotal()">
+              <input id="purchaseDiscount" type="number" step="0.01" placeholder="Discount (default 50%)" class="border p-2 col-span-2" oninput="calculatePurchaseLineTotal()">
               <select id="purchaseDiscountMode" class="border p-2" onchange="calculatePurchaseLineTotal()">
                 <option value="percent">%</option>
                 <option value="amount">Amt</option>
               </select>
             </div>
             <input id="purchaseSellingRate" type="number" step="0.01" placeholder="Selling Price" class="border p-2">
-            <input id="purchaseLineTotal" type="number" step="0.01" placeholder="Total" class="border p-2 bg-gray-100" readonly="">
+            <input id="purchaseLineTotal" type="number" step="0.01" placeholder="Total (Auto/Manual)" class="border p-2 font-semibold text-emerald-800">
             <button onclick="addPurchaseItem()" class="bg-indigo-600 text-white px-3 py-2 rounded">Add Item</button>
           </div>
         </div>
@@ -382,7 +382,7 @@
               <option value="Pkt">Pkt</option>
             </select>
             <input id="saleRate" type="number" step="0.01" placeholder="Rate" class="border p-2" oninput="calculateSaleLineTotal()">
-            <input id="saleLineTotal" type="number" step="0.01" placeholder="Total" class="border p-2 bg-gray-100" readonly="">
+            <input id="saleLineTotal" type="number" step="0.01" placeholder="Total" class="border p-2 font-medium">
             <button onclick="addSaleItem()" class="bg-indigo-600 text-white px-3 py-2 rounded">Add Item</button>
           </div>
         </div>
@@ -405,7 +405,7 @@
         </div>
 
         <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-200 mb-6 space-y-4">
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 items-start">
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4 items-start">
             <div>
               <label class="block mb-1 text-sm font-medium text-gray-700">Items Total</label>
               <input id="saleGrandTotal" class="border border-gray-300 p-2 rounded-lg w-full bg-gray-50 font-semibold" readonly="">
@@ -452,7 +452,7 @@
                 </select>
               </div>
             </div>
-            <div class="bg-blue-50/50 p-2.5 rounded-lg border border-blue-100">
+            <div class="bg-blue-50/60 p-2.5 rounded-lg border border-blue-200">
               <div class="flex items-center justify-between mb-1">
                 <span class="text-sm font-semibold text-blue-900">Agent Commission</span>
                 <label class="toggle-switch">
@@ -460,7 +460,7 @@
                   <span class="toggle-slider"></span>
                 </label>
               </div>
-              <div id="saleAgentCommissionFields" class="hidden space-y-2 pt-1">
+              <div id="saleAgentCommissionFields" class="hidden space-y-1.5 pt-1">
                 <div class="grid grid-cols-3 gap-1.5">
                   <input id="saleAgentCommission" type="number" step="0.01" class="border border-gray-300 p-1.5 rounded text-sm w-full col-span-2 bg-white" oninput="recalculateSaleFinalTotal()" value="0" placeholder="Commission">
                   <select id="saleAgentCommissionMode" class="border border-gray-300 p-1.5 rounded text-sm bg-white" onchange="recalculateSaleFinalTotal()">
@@ -470,9 +470,29 @@
                 </div>
               </div>
             </div>
+            <div class="bg-purple-50/60 p-2.5 rounded-lg border border-purple-200">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-sm font-semibold text-purple-900">GST</span>
+                <label class="toggle-switch">
+                  <input id="saleUseGst" type="checkbox" onchange="toggleSaleGstFields()">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div id="saleGstFields" class="hidden space-y-1.5 pt-1">
+                <div class="grid grid-cols-3 gap-1.5">
+                  <input id="saleGstPercent" type="number" step="0.01" class="border border-gray-300 p-1.5 rounded text-sm w-full col-span-2 bg-white" oninput="recalculateSaleFinalTotal()" value="18" placeholder="GST %">
+                  <span class="flex items-center justify-center text-xs font-bold text-gray-500 bg-gray-100 rounded">%</span>
+                </div>
+                <div class="flex gap-1">
+                  <button type="button" onclick="setSaleGstPreset(5)" class="px-1.5 py-0.5 text-xs bg-purple-100 text-purple-800 hover:bg-purple-200 rounded font-medium">5%</button>
+                  <button type="button" onclick="setSaleGstPreset(12)" class="px-1.5 py-0.5 text-xs bg-purple-100 text-purple-800 hover:bg-purple-200 rounded font-medium">12%</button>
+                  <button type="button" onclick="setSaleGstPreset(18)" class="px-1.5 py-0.5 text-xs bg-purple-200 text-purple-900 hover:bg-purple-300 rounded font-semibold">18%</button>
+                </div>
+              </div>
+            </div>
             <div>
               <label class="block mb-1 text-sm font-bold text-gray-800">Final Total</label>
-              <input id="saleFinalTotal" class="border-2 border-emerald-500 font-bold text-lg text-emerald-800 p-2 rounded-lg w-full bg-emerald-50" readonly="">
+              <input id="saleFinalTotal" type="number" step="0.01" class="border-2 border-emerald-500 font-bold text-lg text-emerald-800 p-2 rounded-lg w-full bg-emerald-50 focus:bg-white" placeholder="Total" oninput="onSaleFinalTotalManualInput()">
             </div>
           </div>
           <div class="flex flex-wrap items-center justify-end gap-3 pt-3 border-t border-gray-100">
@@ -705,9 +725,10 @@
         <div class="max-w-6xl mx-auto bg-white rounded shadow-lg">
           <div class="flex items-center justify-between px-4 py-3 border-b">
             <h3 class="text-lg font-semibold">Party Statement Invoice</h3>
-            <div>
-              <button onclick="printPartyStatement()" class="bg-gray-700 text-white px-3 py-2 rounded mr-2">Print Statement</button>
-              <button onclick="closePartyStatementDialog()" class="bg-gray-500 text-white px-3 py-2 rounded">Close</button>
+            <div class="flex items-center gap-2">
+              <button onclick="sharePartyStatementWhatsApp()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-3 py-2 rounded flex items-center gap-1 shadow-sm transition active:scale-95 text-sm">💬 Click to Share on WhatsApp</button>
+              <button onclick="printPartyStatement()" class="bg-gray-700 hover:bg-gray-800 text-white px-3 py-2 rounded text-sm">Print Statement</button>
+              <button onclick="closePartyStatementDialog()" class="bg-gray-500 hover:bg-gray-600 text-white px-3 py-2 rounded text-sm">Close</button>
             </div>
           </div>
 
@@ -1183,11 +1204,11 @@
                   <th class="px-4 py-3 align-middle font-semibold text-right whitespace-nowrap">Quantity Type</th>
                   <th class="px-4 py-3 align-middle font-semibold text-left">Available Stock</th>
                   <th class="px-4 py-3 align-middle font-semibold text-right whitespace-nowrap">Purchase Rate</th>
+                  <th class="px-4 py-3 align-middle font-semibold text-right whitespace-nowrap">Discount (%)</th>
                   <th class="px-4 py-3 align-middle font-semibold text-right whitespace-nowrap">Packing Charge (%)</th>
                   <th class="px-4 py-3 align-middle font-semibold text-left">Transport Charge</th>
-                  <th class="px-4 py-3 align-middle font-semibold text-right whitespace-nowrap">Agent Commission</th>
+                  <th class="px-4 py-3 align-middle font-semibold text-right whitespace-nowrap">Agent Commission (%)</th>
                   <th class="px-4 py-3 align-middle font-semibold text-right whitespace-nowrap">Selling Rate</th>
-                  <th class="px-4 py-3 align-middle font-semibold text-right whitespace-nowrap">Total Value</th>
                   <th class="px-4 py-3 align-middle font-semibold text-center whitespace-nowrap w-32">Action</th>
                 </tr>
               </thead>
@@ -1324,8 +1345,14 @@
       <section id="rawMaterialLedgerView" class="hidden">
         <h2 class="text-2xl font-semibold mb-4">Raw Material Ledger</h2>
 
-        <div class="bg-white p-4 rounded shadow mb-4">
-          <input id="rawMaterialLedgerSearch" class="border p-2 w-full" placeholder="Search by product / party" oninput="refreshRawMaterialLedger()">
+        <div class="bg-white p-4 rounded shadow mb-4 flex flex-col md:flex-row gap-3 items-center justify-between">
+          <div class="flex-1 flex gap-3 w-full">
+            <input id="rawMaterialLedgerSearch" class="border p-2 rounded flex-1" placeholder="Search by product / party..." oninput="refreshRawMaterialLedger()">
+            <select id="rawMaterialLedgerProductFilter" class="border p-2 rounded max-w-xs" onchange="refreshRawMaterialLedger()">
+              <option value="">All Products</option>
+            </select>
+          </div>
+          <button onclick="showView('rawMaterialEntry')" class="bg-blue-700 hover:bg-blue-800 text-white px-4 py-2 rounded-lg font-medium shadow text-sm whitespace-nowrap">+ Product IN / OUT Add</button>
         </div>
 
         <div class="bg-white shadow rounded overflow-x-auto">
@@ -1357,6 +1384,7 @@
                 <th class="px-4 py-3 align-middle font-semibold text-left min-w-[200px]">Product</th>
                 <th class="px-4 py-3 align-middle font-semibold text-right whitespace-nowrap">Quantity Type</th>
                 <th class="px-4 py-3 align-middle font-semibold text-right whitespace-nowrap">Purchase Rate</th>
+                <th class="px-4 py-3 align-middle font-semibold text-right whitespace-nowrap">Discount</th>
                 <th class="px-4 py-3 align-middle font-semibold text-left">Transport Charge</th>
                 <th class="px-4 py-3 align-middle font-semibold text-right whitespace-nowrap">Agent Commission</th>
                 <th class="px-4 py-3 align-middle font-semibold text-right whitespace-nowrap">Packing Charges</th>
@@ -1437,7 +1465,7 @@
             <input id="labourName" class="border p-2" placeholder="Name">
             <input id="labourPerHourCost" type="number" step="0.01" min="0" class="border p-2" placeholder="Per Hour Cost" oninput="recalculateLabourSalary()">
             <input id="labourTotalHours" type="number" step="0.01" min="0" class="border p-2" placeholder="Total Hours" oninput="recalculateLabourSalary()">
-            <input id="labourTotalSalary" type="number" step="0.01" min="0" class="border p-2 bg-gray-100" placeholder="Total Salary" readonly="">
+            <input id="labourTotalSalary" type="number" step="0.01" min="0" class="border p-2 font-medium" placeholder="Total Salary (Auto/Manual)">
           </div>
           <textarea id="labourNotes" class="border p-2 w-full mt-3" rows="2" placeholder="Notes (optional)"></textarea>
           <div class="mt-3 flex items-center gap-3">
@@ -1463,14 +1491,15 @@
           </table>
         </div>
 
-        <h3 class="text-xl font-semibold mb-2">Week End (Saturday) Summary</h3>
+        <h3 class="text-xl font-semibold mb-2">Week End Attendance Summary</h3>
         <div class="bg-white shadow rounded overflow-x-auto">
           <table class="w-full text-sm">
             <thead class="bg-gray-200">
               <tr>
-                <th class="px-4 py-3 align-middle font-semibold text-left">Week End (Saturday)</th>
-                <th class="px-4 py-3 align-middle font-semibold text-left">Rows</th>
-                <th class="px-4 py-3 align-middle font-semibold text-right whitespace-nowrap">Total Hours</th>
+                <th class="px-4 py-3 align-middle font-semibold text-left">Month / Year</th>
+                <th class="px-4 py-3 align-middle font-semibold text-left">Week No.</th>
+                <th class="px-4 py-3 align-middle font-semibold text-right whitespace-nowrap">Rate</th>
+                <th class="px-4 py-3 align-middle font-semibold text-right whitespace-nowrap">Total Hrs</th>
                 <th class="px-4 py-3 align-middle font-semibold text-right whitespace-nowrap">Total Salary</th>
               </tr>
             </thead>

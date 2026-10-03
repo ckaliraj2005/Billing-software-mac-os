@@ -172,18 +172,14 @@ function normalizeItems(items) {
 
 function writePurchaseReturnLedger(returnId, payload) {
   const particulars = `Purchase Return #${returnId}`;
-  const isCredit = normalizeMode(payload.mode) !== 'Cash';
-
-  if (isCredit && Number(payload.total) > 0) {
+  if (payload.partyId && Number(payload.total) > 0) {
     insertLedgerStmt.run(payload.date, payload.partyId, 'debit', 'Party', particulars, Number(payload.total), particulars);
   }
 }
 
 function writeSalesReturnLedger(returnId, payload) {
   const particulars = `Sales Return #${returnId}`;
-  const isCredit = normalizeMode(payload.mode) !== 'Cash';
-
-  if (isCredit && Number(payload.total) > 0) {
+  if (payload.partyId && Number(payload.total) > 0) {
     insertLedgerStmt.run(payload.date, payload.partyId, 'credit', 'Party', particulars, Number(payload.total), particulars);
   }
 }
@@ -527,6 +523,140 @@ function deleteSalesReturn(id) {
   }
 }
 
+const updatePurchaseReturnTxn = db.transaction((id, data) => {
+  const returnId = Number(id);
+  const existing = getPurchaseReturnByIdStmt.get(returnId);
+  if (!existing) {
+    return { success: false, message: 'Purchase return not found.' };
+  }
+
+  const oldItems = getPurchaseReturnItemsStmt.all(returnId).map((item) => ({
+    productId: Number(item.product_id),
+    boxes: Number(item.boxes),
+    pieces: Number(item.pieces),
+    unitType: normalizeUnitType(item.unit_type) || 'Pcs',
+    rate: Number(item.rate) || 0
+  }));
+  rollbackPurchaseReturnStock(oldItems, existing.godown_id);
+  deletePurchaseReturnItemsStmt.run(returnId);
+  deleteLedgerByParticularsStmt.run(`Purchase Return #${returnId}`);
+
+  const date = String(data?.date || existing.date).trim();
+  const billNo = String(data?.bill_no || existing.bill_no || returnId).trim();
+  const partyId = Number(data?.party_id || existing.party_id);
+  const godownId = Number(data?.godown_id ?? existing.godown_id) || null;
+  const mode = normalizeMode(data?.mode || existing.mode, 'Credit');
+  const referencePurchaseId = Number(data?.reference_purchase_id ?? existing.reference_purchase_id) || null;
+  const notes = String(data?.notes ?? existing.notes ?? '').trim();
+  const inputItems = Array.isArray(data?.items) ? data.items : [];
+  const items = normalizeItems(inputItems);
+
+  if (!date || !partyId || items.length === 0 || items.length !== inputItems.length) {
+    return { success: false, message: 'Invalid purchase return data.' };
+  }
+
+  const stockCheck = ensurePurchaseReturnStockAvailable(items, godownId);
+  if (!stockCheck.success) {
+    return stockCheck;
+  }
+
+  const total = items.reduce((sum, item) => sum + item.total, 0);
+
+  db.prepare(`
+    UPDATE purchase_returns
+    SET bill_no = ?, date = ?, party_id = ?, godown_id = ?, mode = ?, total = ?, reference_purchase_id = ?, notes = ?
+    WHERE id = ?
+  `).run(billNo, date, partyId, godownId, mode, total, referencePurchaseId, notes, returnId);
+
+  applyPurchaseReturnStockReduction(items, godownId);
+  items.forEach((item) => {
+    insertPurchaseReturnItemStmt.run(returnId, item.productId, item.boxes, item.pieces, item.unitType, item.rate, item.total);
+  });
+
+  writePurchaseReturnLedger(returnId, {
+    date,
+    partyId,
+    mode,
+    total
+  });
+
+  return { success: true, id: returnId };
+});
+
+const updateSalesReturnTxn = db.transaction((id, data) => {
+  const returnId = Number(id);
+  const existing = getSalesReturnByIdStmt.get(returnId);
+  if (!existing) {
+    return { success: false, message: 'Sales return not found.' };
+  }
+
+  const oldItems = getSalesReturnItemsStmt.all(returnId).map((item) => ({
+    productId: Number(item.product_id),
+    boxes: Number(item.boxes),
+    pieces: Number(item.pieces),
+    unitType: normalizeUnitType(item.unit_type) || 'Pcs',
+    rate: Number(item.rate) || 0
+  }));
+  const rollbackResult = rollbackSalesReturnStock(oldItems, existing.godown_id);
+  if (!rollbackResult.success) {
+    return rollbackResult;
+  }
+  deleteSalesReturnItemsStmt.run(returnId);
+  deleteLedgerByParticularsStmt.run(`Sales Return #${returnId}`);
+
+  const date = String(data?.date || existing.date).trim();
+  const billNo = String(data?.bill_no || existing.bill_no || returnId).trim();
+  const partyId = Number(data?.party_id || existing.party_id);
+  const godownId = Number(data?.godown_id ?? existing.godown_id) || null;
+  const mode = normalizeMode(data?.mode || existing.mode, 'Credit');
+  const referenceSaleId = Number(data?.reference_sale_id ?? existing.reference_sale_id) || null;
+  const notes = String(data?.notes ?? existing.notes ?? '').trim();
+  const inputItems = Array.isArray(data?.items) ? data.items : [];
+  const items = normalizeItems(inputItems);
+
+  if (!date || !partyId || items.length === 0 || items.length !== inputItems.length) {
+    return { success: false, message: 'Invalid sales return data.' };
+  }
+
+  const total = items.reduce((sum, item) => sum + item.total, 0);
+
+  db.prepare(`
+    UPDATE sales_returns
+    SET bill_no = ?, date = ?, party_id = ?, godown_id = ?, mode = ?, total = ?, reference_sale_id = ?, notes = ?
+    WHERE id = ?
+  `).run(billNo, date, partyId, godownId, mode, total, referenceSaleId, notes, returnId);
+
+  applySalesReturnStockIncrease(items, godownId, date, billNo);
+  items.forEach((item) => {
+    insertSalesReturnItemStmt.run(returnId, item.productId, item.boxes, item.pieces, item.unitType, item.rate, item.total);
+  });
+
+  writeSalesReturnLedger(returnId, {
+    date,
+    partyId,
+    mode,
+    total
+  });
+
+  return { success: true, id: returnId };
+});
+
+function updatePurchaseReturn(id, data) {
+  try {
+    return updatePurchaseReturnTxn(id, data || {});
+  } catch (error) {
+    return { success: false, message: error.message || 'Unable to update purchase return.' };
+  }
+}
+
+function updateSalesReturn(id, data) {
+  try {
+    return updateSalesReturnTxn(id, data || {});
+  } catch (error) {
+    return { success: false, message: error.message || 'Unable to update sales return.' };
+  }
+}
+
 function getSalesReturns() {
   try {
     return getSalesReturnsStmt.all();
@@ -562,10 +692,12 @@ function getSalesReturnDetails(id) {
 
 module.exports = {
   addPurchaseReturn,
+  updatePurchaseReturn,
   deletePurchaseReturn,
   getPurchaseReturns,
   getPurchaseReturnDetails,
   addSalesReturn,
+  updateSalesReturn,
   deleteSalesReturn,
   getSalesReturns,
   getSalesReturnDetails

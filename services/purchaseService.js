@@ -119,6 +119,8 @@ const getGodownStockItemDetailStmt = db.prepare(
           total_boxes, total_pieces, pieces_per_box,
           COALESCE(unit_type, 'Pcs') AS unit_type,
           purchase_rate, packing_charge, transport_charge,
+          COALESCE(agent_commission, 0) AS agent_commission,
+          COALESCE(discount, 0) AS discount,
           selling_rate, last_purchase_date, COALESCE(last_purchase_bill_no, '') AS last_purchase_bill_no
    FROM godown_stock
    WHERE godown_id = ? AND product_id = ?`
@@ -127,8 +129,8 @@ const getGodownStockItemDetailStmt = db.prepare(
 const insertGodownStockStmt = db.prepare(
   `INSERT INTO godown_stock (
       godown_id, product_id, purchase_rate, packing_charge, transport_charge,
-      agent_name, selling_rate, pieces_per_box, unit_type, total_boxes, total_pieces, last_purchase_date, last_purchase_bill_no
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      agent_name, agent_commission, discount, selling_rate, pieces_per_box, unit_type, total_boxes, total_pieces, last_purchase_date, last_purchase_bill_no
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 );
 
 const updateGodownStockTotalsStmt = db.prepare(
@@ -140,7 +142,7 @@ const updateGodownStockTotalsStmt = db.prepare(
 const updateGodownStockMetaStmt = db.prepare(
   `UPDATE godown_stock
    SET purchase_rate = ?, packing_charge = ?, transport_charge = ?,
-       agent_name = ?, agent_commission = ?, selling_rate = ?, pieces_per_box = ?, unit_type = ?, last_purchase_date = ?, last_purchase_bill_no = ?
+       agent_name = ?, agent_commission = ?, discount = ?, selling_rate = ?, pieces_per_box = ?, unit_type = ?, last_purchase_date = ?, last_purchase_bill_no = ?
    WHERE godown_id = ? AND product_id = ?`
 );
 
@@ -150,6 +152,8 @@ const latestMetaForGodownProductStmt = db.prepare(
   `SELECT pi.rate,
           COALESCE(pi.packing_charge, 0) AS packing_charge,
           COALESCE(pi.transport_charge, 0) AS transport_charge,
+          COALESCE(pi.agent_commission, 0) AS agent_commission,
+          COALESCE(pi.discount_percent, 0) AS discount_percent,
           COALESCE(pi.agent_name, '') AS agent_name,
           COALESCE(pi.selling_rate, pi.rate) AS selling_rate,
           COALESCE(pi.unit_type, 'Pcs') AS unit_type,
@@ -319,6 +323,7 @@ function syncGodownStockMeta(godownId, productId) {
     Number(latest.transport_charge) || 0,
     String(latest.agent_name || ''),
     Number(latest.agent_commission) || 0,
+    Number(latest.discount_percent) || 0,
     Number(latest.selling_rate) || Number(latest.rate) || 0,
     Math.max(1, Number(latest.pieces) || 1),
     normalizeUnitType(latest.unit_type) || 'Pcs',
@@ -333,6 +338,7 @@ function applyGodownStockDelta(item, godownId, multiplier, purchaseDate, purchas
   const existing = getGodownStockRowStmt.get(godownId, item.productId);
   const deltaBoxes = Number(item.boxes) * multiplier;
   const deltaPieces = Number(item.boxes) * Number(item.piecesPerBox) * multiplier;
+  const discountVal = Number(item.discountPercent || item.discount || 0);
 
   if (existing) {
     const nextBoxes = Number(existing.total_boxes) + deltaBoxes;
@@ -351,6 +357,7 @@ function applyGodownStockDelta(item, godownId, multiplier, purchaseDate, purchas
         Number(item.transportCharge) || 0,
         String(item.agentName || ''),
         Number(item.agentCommission) || 0,
+        discountVal,
         getEffectiveSellingRate(item),
         Math.max(1, Number(item.piecesPerBox) || 1),
         normalizeUnitType(item.unitType) || 'Pcs',
@@ -371,6 +378,8 @@ function applyGodownStockDelta(item, godownId, multiplier, purchaseDate, purchas
       Number(item.packingCharge) || 0,
       Number(item.transportCharge) || 0,
       String(item.agentName || ''),
+      Number(item.agentCommission) || 0,
+      discountVal,
       getEffectiveSellingRate(item),
       Math.max(1, Number(item.piecesPerBox) || 1),
       normalizeUnitType(item.unitType) || 'Pcs',
@@ -385,9 +394,8 @@ function applyGodownStockDelta(item, godownId, multiplier, purchaseDate, purchas
 function writePurchaseLedgerEntries(purchaseId, purchaseDate, partyId, deliveryType, purchaseTotal, billNo) {
   const safeBillNo = String(billNo || purchaseId || '').trim() || String(purchaseId);
   const particulars = `Purchase Bill #${safeBillNo}`;
-  const isCredit = normalizeDeliveryType(deliveryType) !== 'Cash';
 
-  if (isCredit && Number(purchaseTotal) > 0) {
+  if (partyId && Number(purchaseTotal) > 0) {
     insertLedgerStmt.run(
       purchaseDate,
       null,
@@ -812,6 +820,7 @@ function updateGodownStockItem(godownId, productId, data) {
   const oldPieces = Number(existing.total_pieces) || 0;
   const nextTotalPieces = nextBoxes * nextPiecesPerBox;
   const nextCommission = Number(data?.agent_commission ?? data?.commission ?? existing.agent_commission ?? 0);
+  const nextDiscount = Number(data?.discount ?? existing.discount ?? 0);
 
   const tx = db.transaction(() => {
     updateGodownStockTotalsStmt.run(nextBoxes, nextTotalPieces, targetGodownId, targetProductId);
@@ -821,6 +830,7 @@ function updateGodownStockItem(godownId, productId, data) {
       nextTransport,
       String(data?.agent_name || existing.agent_name || ''),
       nextCommission,
+      nextDiscount,
       nextSelling,
       nextPiecesPerBox,
       nextUnitType,
@@ -888,6 +898,7 @@ function getGodownStock(godownId, query = '') {
               gs.packing_charge,
               gs.transport_charge,
               COALESCE(gs.agent_commission, 0) AS agent_commission,
+              COALESCE(gs.discount, 0) AS discount,
               gs.agent_name,
               gs.selling_rate,
               gs.total_boxes,
@@ -909,6 +920,7 @@ function getGodownStock(godownId, query = '') {
       const packingCharge = Number(row.packing_charge) || 0;
       const transportCharge = Number(row.transport_charge) || 0;
       const agentCommission = Number(row.agent_commission) || 0;
+      const discount = Number(row.discount) || 0;
       const sellingRate = Number(row.selling_rate) || 0;
 
       return {
@@ -919,6 +931,7 @@ function getGodownStock(godownId, query = '') {
         packing_charge: packingCharge,
         commission: agentCommission,
         agent_commission: agentCommission,
+        discount,
         total_value: totalPieces * purchaseRate
       };
     });
@@ -1004,16 +1017,41 @@ const updatePurchaseRateTxn = db.transaction((id, data) => {
     return { success: false, message: 'Unit type is required.' };
   }
 
-  const lineBase = Number(item.boxes) * Number(item.pieces) * updatedRate;
-  if (!Number.isFinite(updatedDiscountPercent) || updatedDiscountPercent < 0 || updatedDiscountPercent > lineBase) {
-    return { success: false, message: 'Discount must be between 0 and line amount.' };
+  const lineBase = roundCurrency(Number(item.boxes) * Number(item.pieces) * updatedRate);
+
+  let discountAmount = 0;
+  if (data.discount_mode === 'percent' || (data.discount_is_percent !== false && updatedDiscountPercent > 0 && updatedDiscountPercent <= 100)) {
+    discountAmount = roundCurrency((lineBase * updatedDiscountPercent) / 100);
+  } else {
+    discountAmount = roundCurrency(updatedDiscountPercent);
+  }
+  if (discountAmount > lineBase) {
+    return { success: false, message: 'Discount cannot be greater than line amount.' };
   }
 
-  const discountAmount = updatedDiscountPercent;
-  const updatedTotal = (lineBase - discountAmount)
-    + updatedPackingCharge
+  let packingAmount = 0;
+  if (data.packing_mode === 'percent' || (data.packing_is_percent !== false && updatedPackingCharge > 0 && updatedPackingCharge <= 100)) {
+    packingAmount = roundCurrency((lineBase * updatedPackingCharge) / 100);
+  } else {
+    packingAmount = roundCurrency(updatedPackingCharge);
+  }
+
+  let commissionAmount = 0;
+  if (data.agent_commission_mode === 'percent' || data.commission_mode === 'percent' || (data.commission_is_percent !== false && updatedAgentCommission > 0 && updatedAgentCommission <= 100)) {
+    commissionAmount = roundCurrency((lineBase * updatedAgentCommission) / 100);
+  } else {
+    commissionAmount = roundCurrency(updatedAgentCommission);
+  }
+
+  const computedTotal = roundCurrency((lineBase - discountAmount)
+    + packingAmount
     + updatedTransportCharge
-    + updatedAgentCommission;
+    + commissionAmount);
+
+  const updatedTotal = Number.isFinite(Number(data.total)) && Number(data.total) > 0
+    ? roundCurrency(Number(data.total))
+    : computedTotal;
+
   updatePurchaseItemRateStmt.run(
     updatedRate,
     updatedDiscountPercent,

@@ -253,7 +253,8 @@ const addSaleTxn = db.transaction((data) => {
   }
 
   const subtotal = roundCurrency(items.reduce((sum, item) => sum + item.total, 0));
-  const finalTotal = roundCurrency(Math.max(0, subtotal - discount) + deliveryCharges + packingCharges + agentCommission);
+  const computedTotal = roundCurrency(Math.max(0, subtotal - discount) + deliveryCharges + packingCharges + agentCommission);
+  const finalTotal = Number.isFinite(Number(data.total)) && Number(data.total) > 0 ? roundCurrency(Number(data.total)) : computedTotal;
 
   const stockCheck = applySaleStockReduction(items, godownId);
   if (!stockCheck.success) {
@@ -339,7 +340,8 @@ const updateSaleTxn = db.transaction((id, data) => {
   }
 
   const subtotal = roundCurrency(items.reduce((sum, item) => sum + item.total, 0));
-  const finalTotal = roundCurrency(Math.max(0, subtotal - discount) + deliveryCharges + packingCharges + agentCommission);
+  const computedTotal = roundCurrency(Math.max(0, subtotal - discount) + deliveryCharges + packingCharges + agentCommission);
+  const finalTotal = Number.isFinite(Number(data.total)) && Number(data.total) > 0 ? roundCurrency(Number(data.total)) : computedTotal;
 
   const stockCheck = applySaleStockReduction(items, godownId);
   if (!stockCheck.success) {

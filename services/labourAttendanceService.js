@@ -140,7 +140,88 @@ function getLabourEntries() {
 
 function getLabourWeeklySummary() {
   try {
-    return getLabourWeeklySummaryStmt.all();
+    const dbSummaries = getLabourWeeklySummaryStmt.all();
+    const summaryMap = new Map();
+    dbSummaries.forEach((row) => {
+      summaryMap.set(row.week_end_saturday, row);
+    });
+
+    const monthsSet = new Set();
+    const now = new Date();
+    const curYear = now.getFullYear();
+    const curMonth = now.getMonth();
+    monthsSet.add(`${curYear}-${String(curMonth + 1).padStart(2, '0')}`);
+
+    dbSummaries.forEach((row) => {
+      if (row.week_end_saturday) {
+        monthsSet.add(row.week_end_saturday.slice(0, 7));
+      }
+    });
+
+    const rateMap = new Map();
+    try {
+      const ratesStmt = db.prepare(`
+        SELECT date(date, printf('+%d day', ((6 - CAST(strftime('%w', date) AS INTEGER) + 7) % 7))) AS weekend,
+               AVG(per_hour_cost) as avg_rate
+        FROM labour_attendance
+        WHERE per_hour_cost > 0
+        GROUP BY weekend
+      `);
+      ratesStmt.all().forEach((r) => rateMap.set(r.weekend, r.avg_rate));
+    } catch (_e) {}
+
+    const results = [];
+    const sortedMonths = Array.from(monthsSet).sort().reverse();
+    for (const ym of sortedMonths) {
+      const [yearStr, monthStr] = ym.split('-');
+      const y = parseInt(yearStr, 10);
+      const m = parseInt(monthStr, 10) - 1;
+
+      const saturdays = [];
+      const daysInMonth = new Date(y, m + 1, 0).getDate();
+      for (let day = 1; day <= daysInMonth; day++) {
+        const d = new Date(y, m, day);
+        if (d.getDay() === 6) {
+          saturdays.push(`${y}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
+        }
+      }
+
+      const monthName = new Date(y, m, 1).toLocaleString('default', { month: 'long', year: 'numeric' });
+
+      saturdays.forEach((satDate, idx) => {
+        const weekNo = `Week ${idx + 1}`;
+        const existing = summaryMap.get(satDate);
+        if (existing && Number(existing.row_count) > 0) {
+          const hours = Number(existing.total_hours) || 0;
+          const salary = Number(existing.total_salary) || 0;
+          const avgRate = rateMap.get(satDate) ?? (hours > 0 ? (salary / hours) : 0);
+          results.push({
+            month_year: monthName,
+            week_no: weekNo,
+            week_end_saturday: satDate,
+            rate: avgRate > 0 ? Number(avgRate.toFixed(2)) : 0,
+            total_hours: hours,
+            total_salary: salary,
+            row_count: Number(existing.row_count),
+            is_nil: false
+          });
+        } else {
+          results.push({
+            month_year: monthName,
+            week_no: weekNo,
+            week_end_saturday: satDate,
+            rate: 0,
+            total_hours: 0,
+            total_salary: 0,
+            row_count: 0,
+            is_nil: true
+          });
+        }
+      });
+    }
+
+    results.sort((a, b) => b.week_end_saturday.localeCompare(a.week_end_saturday));
+    return results;
   } catch (_error) {
     return [];
   }
