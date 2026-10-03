@@ -142,9 +142,6 @@
       </div>
 
       <section id="transactionView">
-        <div class="bg-white p-4 rounded shadow mb-4">
-          <h2 class="text-2xl font-semibold">Transaction Entry</h2>
-        </div>
 
         <div id="transactionModePicker" class="bg-white p-4 rounded shadow mb-4">
           <h3 class="text-lg font-semibold mb-3">Choose Entry Type</h3>
@@ -224,8 +221,8 @@
             <div class="grid grid-cols-3 gap-2">
               <input id="purchasePackingCharge" type="number" step="0.01" placeholder="Packing Charge" class="border p-2 col-span-2" oninput="calculatePurchaseLineTotal()">
               <select id="purchasePackingMode" class="border p-2" onchange="calculatePurchaseLineTotal()">
-                <option value="amount">Amt</option>
                 <option value="percent">%</option>
+                <option value="amount">Amt</option>
               </select>
             </div>
           </div>
@@ -235,15 +232,15 @@
             <div class="grid grid-cols-3 gap-2 md:col-span-2">
               <input id="purchaseAgentCommission" type="number" step="0.01" placeholder="Agent Commission" class="border p-2 col-span-2" oninput="calculatePurchaseLineTotal()">
               <select id="purchaseAgentCommissionMode" class="border p-2" onchange="calculatePurchaseLineTotal()">
-                <option value="amount">Amt</option>
                 <option value="percent">%</option>
+                <option value="amount">Amt</option>
               </select>
             </div>
             <div class="grid grid-cols-3 gap-2 md:col-span-2">
               <input id="purchaseDiscount" type="number" step="0.01" placeholder="Discount" class="border p-2 col-span-2" oninput="calculatePurchaseLineTotal()">
               <select id="purchaseDiscountMode" class="border p-2" onchange="calculatePurchaseLineTotal()">
-                <option value="amount">Amt</option>
                 <option value="percent">%</option>
+                <option value="amount">Amt</option>
               </select>
             </div>
             <input id="purchaseSellingRate" type="number" step="0.01" placeholder="Selling Price" class="border p-2">
@@ -423,8 +420,8 @@
               <div class="grid grid-cols-3 gap-2">
                 <input id="saleDiscount" type="number" step="0.01" class="border border-gray-300 p-2 rounded-lg w-full col-span-2" oninput="recalculateSaleFinalTotal()" value="0">
                 <select id="saleDiscountMode" class="border border-gray-300 p-2 rounded-lg" onchange="recalculateSaleFinalTotal()">
-                  <option value="amount">Amt</option>
                   <option value="percent">%</option>
+                  <option value="amount">Amt</option>
                 </select>
               </div>
             </div>
@@ -449,8 +446,8 @@
               <div class="grid grid-cols-3 gap-2">
                 <input id="saleCommissionCharges" type="number" step="0.01" class="border border-gray-300 p-2 rounded-lg w-full col-span-2" oninput="recalculateSaleFinalTotal()" value="0" placeholder="Packing Charges">
                 <select id="salePackingMode" class="border border-gray-300 p-2 rounded-lg" onchange="recalculateSaleFinalTotal()">
-                  <option value="amount">Amt</option>
                   <option value="percent">%</option>
+                  <option value="amount">Amt</option>
                 </select>
               </div>
             </div>
@@ -463,12 +460,11 @@
                 </label>
               </div>
               <div id="saleAgentCommissionFields" class="hidden space-y-2 pt-1">
-                <input id="saleAgentName" type="text" class="border border-gray-300 p-1.5 rounded text-sm w-full bg-white" placeholder="Agent Name">
                 <div class="grid grid-cols-3 gap-1.5">
                   <input id="saleAgentCommission" type="number" step="0.01" class="border border-gray-300 p-1.5 rounded text-sm w-full col-span-2 bg-white" oninput="recalculateSaleFinalTotal()" value="0" placeholder="Commission">
                   <select id="saleAgentCommissionMode" class="border border-gray-300 p-1.5 rounded text-sm bg-white" onchange="recalculateSaleFinalTotal()">
-                    <option value="amount">Amt</option>
                     <option value="percent">%</option>
+                    <option value="amount">Amt</option>
                   </select>
                 </div>
               </div>

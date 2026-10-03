@@ -280,14 +280,14 @@ function updateGlobalBreadcrumbs(view, stage = null) {
     if (view === 'transaction') {
         const curStage = stage || transactionFlowStage;
         if (curStage === 'party') {
-            subTitle = currentTransactionType === 'sale' ? 'Sales Entry › Party List' : 'Purchase Entry › Party List';
+            subTitle = currentTransactionType === 'sale' ? 'Sales Party List' : 'Purchase Party List';
         } else if (curStage === 'entry') {
             if (currentTransactionType === 'sale') subTitle = 'Estimated Sales Invoice';
             else if (currentTransactionType === 'purchase') subTitle = 'Purchase Entry';
             else if (currentTransactionType === 'sales_return') subTitle = 'Sales Return';
             else if (currentTransactionType === 'purchase_return') subTitle = 'Purchase Return';
         } else {
-            subTitle = 'Choose Entry Type';
+            subTitle = '';
         }
     } else if (view === 'stock') {
         const isDetail = document.getElementById('godownDetailCard') && !document.getElementById('godownDetailCard').classList.contains('hidden');
@@ -1251,8 +1251,7 @@ function recalculatePartyStatementSummary() {
     const paymentTotal = currentPartyStatementRows.reduce((sum, row) => sum + (Number(row.baseTotal) || 0), 0);
     const packingTotal = currentPartyStatementRows.reduce((sum, row) => sum + (Number(row.packing) || 0), 0);
     const transportTotal = currentPartyStatementRows.reduce((sum, row) => sum + (Number(row.transport) || 0), 0);
-    const commissionTotal = currentPartyStatementRows.reduce((sum, row) => sum + (Number(row.commission) || 0), 0);
-    const finalTotal = paymentTotal;
+    const finalTotal = paymentTotal + (includePacking ? packingTotal : 0) + (includeTransport ? transportTotal : 0) + (includeCommission ? commissionTotal : 0);
     const toggleRow = (id, shouldShow) => {
         const el = document.getElementById(id);
         if (el) {
@@ -2390,9 +2389,9 @@ function calculatePurchaseLineTotal() {
     const packingCharge = Number(document.getElementById('purchasePackingCharge').value) || 0;
     const transportCharge = Number(document.getElementById('purchaseTransportCharge').value) || 0;
     const agentCommission = Number(document.getElementById('purchaseAgentCommission').value) || 0;
-    const discountMode = String(document.getElementById('purchaseDiscountMode')?.value || 'amount').trim();
-    const packingMode = String(document.getElementById('purchasePackingMode')?.value || 'amount').trim();
-    const commissionMode = String(document.getElementById('purchaseAgentCommissionMode')?.value || 'amount').trim();
+    const discountMode = String(document.getElementById('purchaseDiscountMode')?.value || 'percent').trim();
+    const packingMode = String(document.getElementById('purchasePackingMode')?.value || 'percent').trim();
+    const commissionMode = String(document.getElementById('purchaseAgentCommissionMode')?.value || 'percent').trim();
     const lineBase = cases * qtyPerCase * rate;
     const discountAmount = discountMode === 'percent' ? lineBase * discountValue / 100 : discountValue;
     const packingAmount = packingMode === 'percent' ? lineBase * packingCharge / 100 : packingCharge;
@@ -2405,14 +2404,14 @@ function clearPurchaseLineForm() {
     document.getElementById('purchaseBoxes').value = '';
     document.getElementById('purchasePieces').value = '';
     document.getElementById('purchaseDiscount').value = '';
-    document.getElementById('purchaseDiscountMode').value = 'amount';
+    document.getElementById('purchaseDiscountMode').value = 'percent';
     document.getElementById('purchaseUnitType').value = 'Pcs';
     document.getElementById('purchaseRate').value = '';
     document.getElementById('purchasePackingCharge').value = '';
-    document.getElementById('purchasePackingMode').value = 'amount';
+    document.getElementById('purchasePackingMode').value = 'percent';
     document.getElementById('purchaseTransportCharge').value = '';
     document.getElementById('purchaseAgentCommission').value = '';
-    document.getElementById('purchaseAgentCommissionMode').value = 'amount';
+    document.getElementById('purchaseAgentCommissionMode').value = 'percent';
     document.getElementById('purchaseSellingRate').value = '';
     document.getElementById('purchaseLineTotal').value = '';
 }
@@ -2493,17 +2492,17 @@ function addPurchaseItem() {
     const cases = Number(document.getElementById('purchaseBoxes').value) || 0;
     const qtyPerCase = Number(document.getElementById('purchasePieces').value) || 0;
     const discountValue = Number(document.getElementById('purchaseDiscount').value);
-    const discountMode = String(document.getElementById('purchaseDiscountMode')?.value || 'amount').trim();
+    const discountMode = String(document.getElementById('purchaseDiscountMode')?.value || 'percent').trim();
     const unitType = normalizeUnitType(document.getElementById('purchaseUnitType').value);
     const rate = Number(document.getElementById('purchaseRate').value) || 0;
     const packingCharge = Number(document.getElementById('purchasePackingCharge').value);
-    const packingMode = String(document.getElementById('purchasePackingMode')?.value || 'amount').trim();
+    const packingMode = String(document.getElementById('purchasePackingMode')?.value || 'percent').trim();
     const transportCharge = Number(document.getElementById('purchaseTransportCharge').value);
     const supplierSelect = document.getElementById('purchasePartyId');
     const supplierName = supplierSelect && supplierSelect.selectedIndex >= 0 ? String(supplierSelect.options[supplierSelect.selectedIndex].text || '').trim() : '';
     const agentName = supplierName || 'Supplier';
     const agentCommission = Number(document.getElementById('purchaseAgentCommission').value);
-    const commissionMode = String(document.getElementById('purchaseAgentCommissionMode')?.value || 'amount').trim();
+    const commissionMode = String(document.getElementById('purchaseAgentCommissionMode')?.value || 'percent').trim();
     const sellingRate = Number(document.getElementById('purchaseSellingRate').value);
     if (!productName || cases <= 0 || qtyPerCase <= 0 || !unitType || rate <= 0 || !Number.isFinite(discountValue) || discountValue < 0 || !Number.isFinite(packingCharge) || packingCharge < 0 || !Number.isFinite(transportCharge) || transportCharge < 0 || !Number.isFinite(agentCommission) || agentCommission < 0 || !Number.isFinite(sellingRate) || sellingRate <= 0) {
         window.alert('Fill all item fields with valid values.');
@@ -3082,10 +3081,11 @@ function renderRawMaterialStock(rows) {
         <td class="px-4 py-3 align-middle text-right text-green-700 font-semibold">${ totalIn.toFixed(2) }</td>
         <td class="px-4 py-3 align-middle text-right text-red-700 font-semibold">${ totalOut.toFixed(2) }</td>
         <td class="px-4 py-3 align-middle text-right font-semibold ${ balanceQty < 0 ? 'text-red-700' : 'text-blue-900' }">${ balanceQty.toFixed(2) }</td>
-        <td class="px-4 py-3 align-middle">${ escapeHtml(formatDisplayDate(row.last_updated || '-')) }</td>
-        <td class="px-4 py-3 align-middle">
-          <button onclick="editRawMaterialStockProduct('${ escapeHtml(row.product_name) }')" class="bg-amber-500 text-white px-3 py-1 rounded">Edit</button>
-          <button onclick="removeRawMaterialStockProduct('${ escapeHtml(row.product_name) }')" class="bg-red-600 text-white px-3 py-1 rounded">Delete</button>
+        <td class="px-4 py-3 align-middle text-center whitespace-nowrap">
+          <div class="inline-flex items-center justify-center gap-2">
+            <button onclick="editRawMaterialStockProduct('${ escapeHtml(row.product_name) }')" class="bg-amber-500 hover:bg-amber-600 text-white font-medium px-3 py-1.5 rounded-lg shadow-sm transition active:scale-95 text-xs">Edit</button>
+            <button onclick="removeRawMaterialStockProduct('${ escapeHtml(row.product_name) }')" class="bg-rose-600 hover:bg-rose-700 text-white font-medium px-3 py-1.5 rounded-lg shadow-sm transition active:scale-95 text-xs">Delete</button>
+          </div>
         </td>
       </tr>
     `;
@@ -3203,9 +3203,11 @@ function renderRawMaterialLedger(rows) {
         </td>
         <td class="px-4 py-3 align-middle text-right text-green-700 font-semibold">${ escapeHtml(received) }</td>
         <td class="px-4 py-3 align-middle text-right text-red-700 font-semibold">${ escapeHtml(used) }</td>
-        <td class="px-4 py-3 align-middle">
-          <button onclick="editRawMaterialLedgerRow(${ Number(row.id) })" class="bg-amber-500 text-white px-3 py-1 rounded">Edit</button>
-          <button onclick="removeRawMaterialTransaction(${ Number(row.id) })" class="bg-red-600 text-white px-3 py-1 rounded">Delete</button>
+        <td class="px-4 py-3 align-middle text-center whitespace-nowrap">
+          <div class="inline-flex items-center justify-center gap-2">
+            <button onclick="editRawMaterialLedgerRow(${ Number(row.id) })" class="bg-amber-500 hover:bg-amber-600 text-white font-medium px-3 py-1.5 rounded-lg shadow-sm transition active:scale-95 text-xs">Edit</button>
+            <button onclick="removeRawMaterialTransaction(${ Number(row.id) })" class="bg-rose-600 hover:bg-rose-700 text-white font-medium px-3 py-1.5 rounded-lg shadow-sm transition active:scale-95 text-xs">Delete</button>
+          </div>
         </td>
       </tr>
     `);
@@ -3395,13 +3397,13 @@ function resetSaleForm() {
     setChecked('saleUseCommission', false);
     setChecked('saleUseAgentCommission', false);
     setValue('saleDiscount', '0');
-    setValue('saleDiscountMode', 'amount');
+    setValue('saleDiscountMode', 'percent');
     setValue('saleDeliveryCharges', '0');
     setValue('saleCommissionCharges', '0');
-    setValue('salePackingMode', 'amount');
+    setValue('salePackingMode', 'percent');
     setValue('saleAgentName', '');
     setValue('saleAgentCommission', '0');
-    setValue('saleAgentCommissionMode', 'amount');
+    setValue('saleAgentCommissionMode', 'percent');
     toggleAgentCommissionFields();
     setValue('saleUnitType', 'Pcs');
 }
@@ -3422,9 +3424,9 @@ function recalculateSaleFinalTotal() {
     const commissionRaw = Number(document.getElementById('saleCommissionCharges').value) || 0;
     const agentRaw = Number(document.getElementById('saleAgentCommission')?.value) || 0;
 
-    const discountMode = String(document.getElementById('saleDiscountMode')?.value || 'amount').trim();
-    const packingMode = String(document.getElementById('salePackingMode')?.value || 'amount').trim();
-    const agentMode = String(document.getElementById('saleAgentCommissionMode')?.value || 'amount').trim();
+    const discountMode = String(document.getElementById('saleDiscountMode')?.value || 'percent').trim();
+    const packingMode = String(document.getElementById('salePackingMode')?.value || 'percent').trim();
+    const agentMode = String(document.getElementById('saleAgentCommissionMode')?.value || 'percent').trim();
 
     const discountAmount = discountMode === 'percent' ? grand * discountRaw / 100 : discountRaw;
     const packingAmount = packingMode === 'percent' ? grand * commissionRaw / 100 : commissionRaw;
@@ -3517,8 +3519,8 @@ async function saveSaleInvoice() {
     const discountRaw = Number(document.getElementById('saleDiscount').value) || 0;
     const deliveryRaw = Number(document.getElementById('saleDeliveryCharges').value) || 0;
     const commissionRaw = Number(document.getElementById('saleCommissionCharges').value) || 0;
-    const discountMode = String(document.getElementById('saleDiscountMode')?.value || 'amount').trim();
-    const packingMode = String(document.getElementById('salePackingMode')?.value || 'amount').trim();
+    const discountMode = String(document.getElementById('saleDiscountMode')?.value || 'percent').trim();
+    const packingMode = String(document.getElementById('salePackingMode')?.value || 'percent').trim();
     const discountAmount = discountMode === 'percent' ? saleItemsDraft.reduce((sum, item) => sum + item.total, 0) * discountRaw / 100 : discountRaw;
     const packingAmount = packingMode === 'percent' ? saleItemsDraft.reduce((sum, item) => sum + item.total, 0) * commissionRaw / 100 : commissionRaw;
     const discount = document.getElementById('saleUseDiscount').checked ? discountAmount : 0;
@@ -3528,7 +3530,7 @@ async function saveSaleInvoice() {
     const useAgentCommission = Boolean(document.getElementById('saleUseAgentCommission')?.checked);
     const agentName = useAgentCommission ? String(document.getElementById('saleAgentName')?.value || '').trim() : '';
     const agentRaw = useAgentCommission ? (Number(document.getElementById('saleAgentCommission')?.value) || 0) : 0;
-    const agentMode = String(document.getElementById('saleAgentCommissionMode')?.value || 'amount').trim();
+    const agentMode = String(document.getElementById('saleAgentCommissionMode')?.value || 'percent').trim();
     const agentCommission = useAgentCommission ? (agentMode === 'percent' ? saleItemsDraft.reduce((sum, item) => sum + item.total, 0) * agentRaw / 100 : agentRaw) : 0;
 
     const editingId = Number(document.getElementById('editingSaleId').value);
@@ -4421,12 +4423,14 @@ async function startEditSale(id) {
     document.getElementById('saleUseTransport').checked = Number(details.delivery_charges || 0) > 0;
     document.getElementById('saleUseCommission').checked = Number(details.packing_charges || 0) > 0;
     document.getElementById('saleDiscount').value = String(Number(details.discount) || 0);
-    document.getElementById('saleDiscountMode').value = 'amount';
+    document.getElementById('saleDiscountMode').value = details.discount_mode || 'percent';
     const useAgent = Number(details.agent_commission || 0) > 0 || Boolean(String(details.agent_name || '').trim());
     document.getElementById('saleUseAgentCommission').checked = useAgent;
-    document.getElementById('saleAgentName').value = details.agent_name || '';
+    if (document.getElementById('saleAgentName')) {
+        document.getElementById('saleAgentName').value = details.agent_name || '';
+    }
     document.getElementById('saleAgentCommission').value = String(Number(details.agent_commission) || 0);
-    document.getElementById('saleAgentCommissionMode').value = 'amount';
+    document.getElementById('saleAgentCommissionMode').value = details.agent_commission_mode || 'percent';
     toggleAgentCommissionFields();
     saleItemsDraft = (details.items || []).map(item => ({
         product_id: item.product_id,
@@ -4874,9 +4878,11 @@ function renderLabourRows(rows) {
         <td class="px-4 py-3 align-middle text-right">${ Number(row.per_hour_cost || 0).toFixed(2) }</td>
         <td class="px-4 py-3 align-middle text-right">${ Number(row.total_hours || 0).toFixed(2) }</td>
         <td class="px-4 py-3 align-middle text-right font-semibold">${ Number(row.total_salary || 0).toFixed(2) }</td>
-        <td class="px-4 py-3 align-middle">
-          <button onclick="startEditLabourEntry(${ Number(row.id) })" class="bg-amber-500 text-white px-3 py-1 rounded">Edit</button>
-          <button onclick="removeLabourEntry(${ Number(row.id) })" class="bg-red-600 text-white px-3 py-1 rounded">Delete</button>
+        <td class="px-4 py-3 align-middle text-center whitespace-nowrap">
+          <div class="inline-flex items-center justify-center gap-2">
+            <button onclick="startEditLabourEntry(${ Number(row.id) })" class="bg-amber-500 hover:bg-amber-600 text-white font-medium px-3 py-1.5 rounded-lg shadow-sm transition active:scale-95 text-xs">Edit</button>
+            <button onclick="removeLabourEntry(${ Number(row.id) })" class="bg-rose-600 hover:bg-rose-700 text-white font-medium px-3 py-1.5 rounded-lg shadow-sm transition active:scale-95 text-xs">Delete</button>
+          </div>
         </td>
       </tr>
     `;
@@ -5062,9 +5068,11 @@ function renderExpenseEntries(rows) {
         <td class="px-4 py-3 align-middle">${ escapeHtml(entry.reason) }</td>
         <td class="px-4 py-3 align-middle ${ isProfit ? 'text-green-700' : 'text-red-700' } font-medium">${ isProfit ? 'PROFIT' : 'LOSS' }</td>
         <td class="px-4 py-3 align-middle text-right ${ isProfit ? 'text-green-700' : 'text-red-700' }">${ formatCurrency(entry.amount) }</td>
-        <td class="px-4 py-3 align-middle">
-          <button onclick="editExpenseEntry(${ entry.id })" class="bg-amber-500 text-white px-3 py-1 rounded">Edit</button>
-          <button onclick="removeExpenseEntry(${ entry.id })" class="bg-red-600 text-white px-3 py-1 rounded">Delete</button>
+        <td class="px-4 py-3 align-middle text-center whitespace-nowrap">
+          <div class="inline-flex items-center justify-center gap-2">
+            <button onclick="editExpenseEntry(${ entry.id })" class="bg-amber-500 hover:bg-amber-600 text-white font-medium px-3 py-1.5 rounded-lg shadow-sm transition active:scale-95 text-xs">Edit</button>
+            <button onclick="removeExpenseEntry(${ entry.id })" class="bg-rose-600 hover:bg-rose-700 text-white font-medium px-3 py-1.5 rounded-lg shadow-sm transition active:scale-95 text-xs">Delete</button>
+          </div>
         </td>
       </tr>
     `;
@@ -5417,6 +5425,22 @@ function initPlatformStyles() {
     }
 }
 
+function safeFocusAndSelect(el) {
+    if (!el) return;
+    el.focus();
+    const tag = (el.tagName || '').toLowerCase();
+    const type = (el.type || '').toLowerCase();
+    // In Chromium, calling select() on numeric/date/time inputs throws an error or glitches cursor
+    if (tag === 'input' && (type === 'number' || type === 'date' || type === 'time' || type === 'color' || type === 'range' || type === 'checkbox' || type === 'radio')) {
+        return;
+    }
+    try {
+        if (typeof el.select === 'function') {
+            el.select();
+        }
+    } catch (_) {}
+}
+
 function setupAutoFocusOnEnter() {
     document.addEventListener('keydown', (event) => {
         if (event.key !== 'Enter') return;
@@ -5438,17 +5462,18 @@ function setupAutoFocusOnEnter() {
         if (isTextarea && event.shiftKey) return;
 
         // In godown name input, allow Enter to trigger addGodown
-        if (target.id === 'godownNameInput') return;
+        if (target.id === 'godownNameInput') {
+            event.preventDefault();
+            addGodown();
+            return;
+        }
 
         // In line-item rate inputs, allow Enter to add item
         if (target.id === 'purchaseSellingRate') {
             event.preventDefault();
             addPurchaseItem();
             const firstInput = document.getElementById('purchaseProductName');
-            if (firstInput) {
-                firstInput.focus();
-                if (typeof firstInput.select === 'function') firstInput.select();
-            }
+            safeFocusAndSelect(firstInput);
             return;
         }
 
@@ -5456,9 +5481,7 @@ function setupAutoFocusOnEnter() {
             event.preventDefault();
             addSaleItem();
             const firstInput = document.getElementById('saleProductId');
-            if (firstInput) {
-                firstInput.focus();
-            }
+            safeFocusAndSelect(firstInput);
             return;
         }
 
@@ -5481,10 +5504,7 @@ function setupAutoFocusOnEnter() {
         if (currentIndex !== -1 && currentIndex < focusables.length - 1) {
             event.preventDefault();
             const nextEl = focusables[currentIndex + 1];
-            nextEl.focus();
-            if (typeof nextEl.select === 'function') {
-                nextEl.select();
-            }
+            safeFocusAndSelect(nextEl);
         }
     });
 }
