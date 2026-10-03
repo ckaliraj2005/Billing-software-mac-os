@@ -190,19 +190,22 @@ function getLedger(filters = {}) {
     const conditions = [];
     const params = [];
 
-    if (filters.partyId) {
+    const filterPartyId = filters.partyId ?? filters.party_id;
+    if (filterPartyId) {
       conditions.push('l.party_id = ?');
-      params.push(Number(filters.partyId));
+      params.push(Number(filterPartyId));
     }
 
-    if (filters.dateFrom) {
+    const filterDateFrom = filters.dateFrom ?? filters.date_from;
+    if (filterDateFrom) {
       conditions.push('l.date >= ?');
-      params.push(filters.dateFrom);
+      params.push(filterDateFrom);
     }
 
-    if (filters.dateTo) {
+    const filterDateTo = filters.dateTo ?? filters.date_to;
+    if (filterDateTo) {
       conditions.push('l.date <= ?');
-      params.push(filters.dateTo);
+      params.push(filterDateTo);
     }
 
     conditions.push("(l.account IN ('Party', 'Manual') OR l.account IS NULL OR l.payment_id IS NOT NULL)");

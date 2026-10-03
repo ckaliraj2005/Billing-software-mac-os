@@ -1107,10 +1107,15 @@ function createWindow() {
 
   try {
     console.log('[CHECKPOINT] 6. preload path resolved:', path.join(__dirname, 'preload.js'));
+    const isMac = process.platform === 'darwin';
     const win = new BrowserWindow({
       title: startupTitle,
-      width: 1200,
-      height: 800,
+      width: 1240,
+      height: 820,
+      minWidth: 1024,
+      minHeight: 700,
+      titleBarStyle: isMac ? 'hiddenInset' : 'default',
+      trafficLightPosition: isMac ? { x: 16, y: 16 } : undefined,
       webPreferences: {
         preload: path.join(__dirname, 'preload.js'),
         contextIsolation: true,

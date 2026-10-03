@@ -14,12 +14,14 @@ A high-performance, cross-platform desktop application engineered for wholesale,
 
 ### 1. Invoicing & Billing Engine
 - **Sales & Purchase Invoices**: Generate professional invoices with automatic sequential bill numbering.
+- **Agent Commission Option**: Toggleable sales agent commission support with customizable agent name, commission amount or percentage, included in final totals and historical ledger entries.
 - **Precision Financial Math**: Epsilon-safe decimal calculations (`roundCurrency` with `Number.EPSILON`) to eliminate floating-point drift across subtotals, percentage/fixed discounts, transport, and packing charges.
+- **Manual & Auto Address Editing**: Flexible customer address field that auto-fills on selection while allowing full manual editing, pasting, or clearing without forced fallbacks.
 - **Differential Stock Sync**: Real-time inventory deduction upon sale creation, automatic stock rollback on invoice modification, and full restoration on invoice cancellation.
 - **Sales & Purchase Returns**: Dedicated return management linked directly to original invoices with automated stock reconciliation.
 
 ### 2. Multi-Warehouse Inventory Management
-- **Godowns / Warehouses**: Unlimited godowns with stock tracking isolated per location.
+- **Godowns / Warehouses**: Unlimited godowns with stock tracking isolated per location, instant addition, and automatic duplicate prevention.
 - **Dual-Unit Metrics**: Simultaneous tracking of **Boxes** and **Pieces per Box** with automatic total quantity math.
 - **Rate Tiering**: Track purchase cost, packing fees, transport additions, and custom selling rates per product per godown.
 - **Low Stock Alerts**: Visual threshold indicators when item inventory falls below safe operating levels.
@@ -34,6 +36,11 @@ A high-performance, cross-platform desktop application engineered for wholesale,
 - **Payment IN & Payment OUT**: Record incoming and outgoing cash flows across **Cash**, **UPI**, **Cheque**, and **Bank Transfer** modes.
 - **Manual Ledger Adjustments**: Post ad-hoc debits or credits with custom narration for adjustments, discounts, or fee settlements.
 - **Party Statement**: Comprehensive running ledger statement with exportable date and party filters.
+
+### 5. macOS Native Look & Navigation
+- **macOS System UI**: Hidden-inset title bar with native traffic light spacing, Apple system font stack (`-apple-system`, `SF Pro Text`), smooth font subpixel antialiasing, custom macOS overlay scrollbars, and focused input rings.
+- **Persistent Global Back Button**: Cross-view navigation history stack with real-time breadcrumbs tracking multi-stage workflows (e.g., Transactions › Party List › Sales Invoice › Godown Detail).
+- **Keyboard Auto-Focus**: Press `Enter` to automatically advance focus and highlight the next input field across all forms and dialogs. Shift+Enter preserved for multiline address textareas.
 
 ### 5. Raw Materials & Manufacturing
 - **Stock Batching**: Inward and outward tracking for raw material batches (Kraft Paper, Chemicals, Packaging, etc.).

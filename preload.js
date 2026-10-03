@@ -85,5 +85,6 @@ contextBridge.exposeInMainWorld('api', {
   openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),
   onUpdateStatus: (callback) => ipcRenderer.on('update-status', (_event, value) => callback(value)),
   onLatestVersion: (callback) => ipcRenderer.on('latest-version', (_event, value) => callback(value)),
-  onDownloadProgress: (callback) => ipcRenderer.on('download-progress', (_event, value) => callback(value))
+  onDownloadProgress: (callback) => ipcRenderer.on('download-progress', (_event, value) => callback(value)),
+  getPlatform: () => process.platform
 });

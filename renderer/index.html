@@ -2,6 +2,58 @@
   <title>Billing Software</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
+    * {
+      box-sizing: border-box;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-rendering: optimizeLegibility;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      color: #1e293b;
+    }
+
+    /* Input & textarea should allow text selection */
+    input, textarea, select {
+      user-select: text;
+      font-family: inherit;
+    }
+
+    /* macOS window top padding when running inside macOS titleBarStyle hiddenInset */
+    body.is-mac aside {
+      padding-top: 36px !important;
+    }
+
+    body.is-mac #globalTopBar {
+      padding-top: 8px;
+    }
+
+    /* Clean macOS style scrollbars */
+    ::-webkit-scrollbar {
+      width: 7px;
+      height: 7px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+
+    /* Refined focus ring */
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    }
+
     .toggle-switch {
       position: relative;
       display: inline-block;
@@ -71,6 +123,24 @@
     </aside>
 
     <main class="flex-1 p-6 overflow-y-auto">
+      <!-- Global Top Navigation Bar with Persistent Back Button & History Stack -->
+      <div id="globalTopBar" class="sticky top-0 z-30 bg-gray-100/95 backdrop-blur-sm pb-4 pt-1 flex items-center justify-between gap-3 border-b border-gray-200 mb-5">
+        <div class="flex items-center gap-3">
+          <button id="globalBackBtn" onclick="goBack()" title="Back (Alt+Left)" disabled class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-sm font-medium bg-white border border-gray-300 shadow-sm text-gray-700 hover:bg-gray-50 hover:text-gray-900 transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+            </svg>
+            <span>Back</span>
+          </button>
+          <div id="globalBreadcrumb" class="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
+            <span>Transaction Entry</span>
+          </div>
+        </div>
+        <div class="flex items-center gap-2 text-xs text-gray-500">
+          <span id="globalClock" class="font-mono bg-white px-2.5 py-1 rounded border border-gray-200 shadow-sm"></span>
+        </div>
+      </div>
+
       <section id="transactionView">
         <div class="bg-white p-4 rounded shadow mb-4">
           <h2 class="text-2xl font-semibold">Transaction Entry</h2>
@@ -207,9 +277,9 @@
 
         <div class="bg-white p-4 rounded shadow mb-6 flex items-center justify-between">
           <div class="text-lg font-semibold">Grand Total: <span id="purchaseGrandTotal">0.00</span></div>
-          <div>
-            <button id="purchaseSubmitBtn" onclick="submitPurchase()" class="bg-green-700 text-white px-4 py-2 rounded mr-2">Save Purchase</button>
-            <button onclick="cancelPurchaseEdit()" class="bg-gray-500 text-white px-4 py-2 rounded">Cancel Edit</button>
+          <div class="flex items-center gap-3">
+            <button id="purchaseSubmitBtn" onclick="submitPurchase()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-5 py-2.5 rounded-lg shadow-sm transition active:scale-95">Save Purchase</button>
+            <button id="purchaseCancelEditBtn" onclick="cancelPurchaseEdit()" class="bg-slate-500 hover:bg-slate-600 text-white font-medium px-5 py-2.5 rounded-lg shadow-sm transition active:scale-95">Cancel Edit</button>
           </div>
         </div>
 
@@ -296,8 +366,8 @@
           </div>
 
           <div class="mt-3">
-            <label class="block mb-1">Address (Auto from selected party)</label>
-            <textarea id="salePartyAddress" rows="2" class="border p-2 w-full bg-gray-50" readonly=""></textarea>
+            <label class="block mb-1 text-sm font-medium text-gray-700">Address (Auto-fills from selected party, fully editable)</label>
+            <textarea id="salePartyAddress" rows="2" class="border border-gray-300 rounded-lg p-2.5 w-full focus:ring-2 focus:ring-blue-500" placeholder="Type, paste, or edit address freely..."></textarea>
           </div>
 
           <h3 class="text-lg font-semibold mt-4 mb-2">Add Item</h3>
@@ -336,61 +406,82 @@
           </table>
         </div>
 
-        <div class="bg-white p-4 rounded shadow mb-6 grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
-          <div>
-            <label class="block mb-1">Grand Total</label>
-            <input id="saleGrandTotal" class="border p-2 w-full bg-gray-100" readonly="">
-          </div>
-          <div>
-            <div class="flex items-center justify-between mb-1">
-              <span class="text-sm font-medium">Discount</span>
-              <label class="toggle-switch">
-                <input id="saleUseDiscount" type="checkbox" checked="" onchange="recalculateSaleFinalTotal()">
-                <span class="toggle-slider"></span>
-              </label>
+        <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-200 mb-6 space-y-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 items-start">
+            <div>
+              <label class="block mb-1 text-sm font-medium text-gray-700">Items Total</label>
+              <input id="saleGrandTotal" class="border border-gray-300 p-2 rounded-lg w-full bg-gray-50 font-semibold" readonly="">
             </div>
-            <div class="grid grid-cols-3 gap-2">
-              <input id="saleDiscount" type="number" step="0.01" class="border p-2 w-full col-span-2" oninput="recalculateSaleFinalTotal()" value="0">
-              <select id="saleDiscountMode" class="border p-2" onchange="recalculateSaleFinalTotal()">
-                <option value="amount">Amt</option>
-                <option value="percent">%</option>
-              </select>
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-sm font-medium text-gray-700">Discount</span>
+                <label class="toggle-switch">
+                  <input id="saleUseDiscount" type="checkbox" checked="" onchange="recalculateSaleFinalTotal()">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div class="grid grid-cols-3 gap-2">
+                <input id="saleDiscount" type="number" step="0.01" class="border border-gray-300 p-2 rounded-lg w-full col-span-2" oninput="recalculateSaleFinalTotal()" value="0">
+                <select id="saleDiscountMode" class="border border-gray-300 p-2 rounded-lg" onchange="recalculateSaleFinalTotal()">
+                  <option value="amount">Amt</option>
+                  <option value="percent">%</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-sm font-medium text-gray-700">Transportation</span>
+                <label class="toggle-switch">
+                  <input id="saleUseTransport" type="checkbox" checked="" onchange="recalculateSaleFinalTotal()">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <input id="saleDeliveryCharges" type="number" step="0.01" class="border border-gray-300 p-2 rounded-lg w-full" oninput="recalculateSaleFinalTotal()" value="0">
+            </div>
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-sm font-medium text-gray-700">Packing Charges</span>
+                <label class="toggle-switch">
+                  <input id="saleUseCommission" type="checkbox" onchange="recalculateSaleFinalTotal()">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div class="grid grid-cols-3 gap-2">
+                <input id="saleCommissionCharges" type="number" step="0.01" class="border border-gray-300 p-2 rounded-lg w-full col-span-2" oninput="recalculateSaleFinalTotal()" value="0" placeholder="Packing Charges">
+                <select id="salePackingMode" class="border border-gray-300 p-2 rounded-lg" onchange="recalculateSaleFinalTotal()">
+                  <option value="amount">Amt</option>
+                  <option value="percent">%</option>
+                </select>
+              </div>
+            </div>
+            <div class="bg-blue-50/50 p-2.5 rounded-lg border border-blue-100">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-sm font-semibold text-blue-900">Agent Commission</span>
+                <label class="toggle-switch">
+                  <input id="saleUseAgentCommission" type="checkbox" onchange="toggleAgentCommissionFields()">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div id="saleAgentCommissionFields" class="hidden space-y-2 pt-1">
+                <input id="saleAgentName" type="text" class="border border-gray-300 p-1.5 rounded text-sm w-full bg-white" placeholder="Agent Name">
+                <div class="grid grid-cols-3 gap-1.5">
+                  <input id="saleAgentCommission" type="number" step="0.01" class="border border-gray-300 p-1.5 rounded text-sm w-full col-span-2 bg-white" oninput="recalculateSaleFinalTotal()" value="0" placeholder="Commission">
+                  <select id="saleAgentCommissionMode" class="border border-gray-300 p-1.5 rounded text-sm bg-white" onchange="recalculateSaleFinalTotal()">
+                    <option value="amount">Amt</option>
+                    <option value="percent">%</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div>
+              <label class="block mb-1 text-sm font-bold text-gray-800">Final Total</label>
+              <input id="saleFinalTotal" class="border-2 border-emerald-500 font-bold text-lg text-emerald-800 p-2 rounded-lg w-full bg-emerald-50" readonly="">
             </div>
           </div>
-          <div>
-            <div class="flex items-center justify-between mb-1">
-              <span class="text-sm font-medium">Transportation</span>
-              <label class="toggle-switch">
-                <input id="saleUseTransport" type="checkbox" checked="" onchange="recalculateSaleFinalTotal()">
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-            <input id="saleDeliveryCharges" type="number" step="0.01" class="border p-2 w-full" oninput="recalculateSaleFinalTotal()" value="0">
-          </div>
-          <div>
-            <div class="flex items-center justify-between mb-1">
-              <span class="text-sm font-medium">Packing Charges</span>
-              <label class="toggle-switch">
-                <input id="saleUseCommission" type="checkbox" onchange="recalculateSaleFinalTotal()">
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-            <div class="grid grid-cols-3 gap-2">
-              <input id="saleCommissionCharges" type="number" step="0.01" class="border p-2 w-full col-span-2" oninput="recalculateSaleFinalTotal()" value="0" placeholder="Packing Charges">
-              <select id="salePackingMode" class="border p-2" onchange="recalculateSaleFinalTotal()">
-                <option value="amount">Amt</option>
-                <option value="percent">%</option>
-              </select>
-            </div>
-          </div>
-          <div>
-            <label class="block mb-1">Final Total</label>
-            <input id="saleFinalTotal" class="border p-2 w-full bg-gray-100" readonly="">
-          </div>
-          <div class="text-right">
-            <button id="saleSubmitBtn" onclick="saveSaleInvoice()" class="bg-green-700 text-white px-4 py-2 rounded mr-2">Save Invoice</button>
-            <button onclick="cancelSaleEdit()" class="bg-gray-500 text-white px-4 py-2 rounded mr-2">Cancel Edit</button>
-            <button onclick="printSalesView()" class="bg-gray-700 text-white px-4 py-2 rounded">Print</button>
+          <div class="flex flex-wrap items-center justify-end gap-3 pt-3 border-t border-gray-100">
+            <button id="saleSubmitBtn" onclick="saveSaleInvoice()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-5 py-2.5 rounded-lg shadow-sm transition active:scale-95">Save Invoice</button>
+            <button id="saleCancelEditBtn" onclick="cancelSaleEdit()" class="bg-slate-500 hover:bg-slate-600 text-white font-medium px-5 py-2.5 rounded-lg shadow-sm transition active:scale-95">Cancel Edit</button>
+            <button onclick="printSalesView()" class="bg-gray-700 hover:bg-gray-800 text-white font-medium px-5 py-2.5 rounded-lg shadow-sm transition active:scale-95">Print</button>
           </div>
         </div>
 
@@ -712,9 +803,9 @@
             <textarea id="address" class="border p-2 md:col-span-2" rows="3" placeholder="Address"></textarea>
             <textarea id="feedback" class="border p-2 md:col-span-2" rows="3" placeholder="Feedback / Notes"></textarea>
           </div>
-          <div class="mt-3">
-            <button id="submitBtn" onclick="addOrUpdateParty()" class="bg-blue-700 text-white px-4 py-2 rounded mr-2">Add</button>
-            <button onclick="clearPartyForm()" class="bg-gray-500 text-white px-4 py-2 rounded">Clear</button>
+          <div class="mt-3 flex items-center gap-3">
+            <button id="submitBtn" onclick="addOrUpdateParty()" class="bg-blue-700 hover:bg-blue-800 text-white font-medium px-5 py-2.5 rounded-lg shadow-sm transition active:scale-95">Add</button>
+            <button onclick="clearPartyForm()" class="bg-slate-500 hover:bg-slate-600 text-white font-medium px-5 py-2.5 rounded-lg shadow-sm transition active:scale-95">Clear</button>
           </div>
         </div>
 
@@ -779,9 +870,9 @@
             </select>
             <input id="expenseAmount" type="number" step="0.01" class="border p-2" placeholder="Amount">
           </div>
-          <div class="mt-3">
-            <button id="expenseSubmitBtn" onclick="saveExpenseEntry()" class="bg-blue-700 text-white px-4 py-2 rounded mr-2">Add Entry</button>
-            <button onclick="cancelExpenseEdit()" class="bg-gray-500 text-white px-4 py-2 rounded">Cancel</button>
+          <div class="mt-3 flex items-center gap-3">
+            <button id="expenseSubmitBtn" onclick="saveExpenseEntry()" class="bg-blue-700 hover:bg-blue-800 text-white font-medium px-5 py-2.5 rounded-lg shadow-sm transition active:scale-95">Add Entry</button>
+            <button id="expenseCancelEditBtn" onclick="cancelExpenseEdit()" class="bg-slate-500 hover:bg-slate-600 text-white font-medium px-5 py-2.5 rounded-lg shadow-sm transition active:scale-95">Cancel</button>
           </div>
         </div>
 
@@ -928,9 +1019,9 @@
           <input id="editPaymentOtherMode" type="text" placeholder="Specify Mode" class="border p-2 hidden">
           <input id="editPaymentDescription" placeholder="Description" class="border p-2">
         </div>
-        <div class="mt-3">
-          <button onclick="savePaymentEdit()" class="bg-amber-600 text-white px-4 py-2 rounded mr-2">Update</button>
-          <button onclick="cancelPaymentEdit()" class="bg-gray-500 text-white px-4 py-2 rounded">Cancel</button>
+        <div class="mt-3 flex items-center gap-3">
+          <button onclick="savePaymentEdit()" class="bg-amber-600 hover:bg-amber-700 text-white font-medium px-5 py-2.5 rounded-lg shadow-sm transition active:scale-95">Update</button>
+          <button onclick="cancelPaymentEdit()" class="bg-slate-500 hover:bg-slate-600 text-white font-medium px-5 py-2.5 rounded-lg shadow-sm transition active:scale-95">Cancel</button>
         </div>
       </div>
 
@@ -1046,18 +1137,18 @@
         <div class="flex items-center justify-between mb-4 gap-3 flex-wrap">
           <h2 class="text-2xl font-semibold">Stock (Godown)</h2>
           <div class="flex items-center gap-2">
-            <select id="godownDeleteTarget" class="border p-2 rounded bg-white min-w-44">
+            <select id="godownDeleteTarget" class="border border-gray-300 p-2 rounded-lg bg-white min-w-44">
               <option value="">Select Godown</option>
             </select>
-            <button onclick="deleteGodownFromTop()" class="bg-red-700 text-white px-3 py-2 rounded">Delete Godown</button>
+            <button onclick="deleteGodownFromTop()" class="bg-rose-600 hover:bg-rose-700 text-white font-medium px-4 py-2 rounded-lg shadow-sm transition active:scale-95">Delete Godown</button>
           </div>
         </div>
 
         <div id="godownSelectionCard" class="space-y-4">
-          <div class="bg-white p-4 rounded shadow">
+          <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
             <div class="flex flex-col md:flex-row gap-3">
-              <input id="godownNameInput" placeholder="Add Godown Name" class="border p-2 flex-1">
-              <button onclick="addGodown()" class="bg-blue-700 text-white px-4 py-2 rounded">Add Godown</button>
+              <input id="godownNameInput" placeholder="Add Godown Name" class="border border-gray-300 p-2.5 rounded-lg flex-1" onkeydown="if(event.key==='Enter'){event.preventDefault();addGodown();}">
+              <button onclick="addGodown()" class="bg-blue-700 hover:bg-blue-800 text-white font-medium px-5 py-2.5 rounded-lg shadow-sm transition active:scale-95">Add Godown</button>
             </div>
           </div>
           <div id="godownList" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
@@ -1199,9 +1290,9 @@
             </div>
           </div>
 
-          <div class="mt-3">
-            <button id="rawMaterialSaveBtn" onclick="saveRawMaterialTransaction()" class="bg-green-700 text-white px-4 py-2 rounded mr-2">Save Entry</button>
-            <button onclick="cancelRawMaterialEdit()" class="bg-gray-500 text-white px-4 py-2 rounded">Cancel Edit</button>
+          <div class="mt-3 flex items-center gap-3">
+            <button id="rawMaterialSaveBtn" onclick="saveRawMaterialTransaction()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-5 py-2.5 rounded-lg shadow-sm transition active:scale-95">Save Entry</button>
+            <button id="rawMaterialCancelEditBtn" onclick="cancelRawMaterialEdit()" class="bg-slate-500 hover:bg-slate-600 text-white font-medium px-5 py-2.5 rounded-lg shadow-sm transition active:scale-95">Cancel Edit</button>
           </div>
         </div>
 
@@ -1346,9 +1437,9 @@
             <input id="labourTotalSalary" type="number" step="0.01" min="0" class="border p-2 bg-gray-100" placeholder="Total Salary" readonly="">
           </div>
           <textarea id="labourNotes" class="border p-2 w-full mt-3" rows="2" placeholder="Notes (optional)"></textarea>
-          <div class="mt-3">
-            <button id="labourSaveBtn" onclick="saveLabourEntry()" class="bg-blue-700 text-white px-4 py-2 rounded mr-2">Add Entry</button>
-            <button onclick="cancelLabourEdit()" class="bg-gray-500 text-white px-4 py-2 rounded">Cancel</button>
+          <div class="mt-3 flex items-center gap-3">
+            <button id="labourSaveBtn" onclick="saveLabourEntry()" class="bg-blue-700 hover:bg-blue-800 text-white font-medium px-5 py-2.5 rounded-lg shadow-sm transition active:scale-95">Add Entry</button>
+            <button id="labourCancelEditBtn" onclick="cancelLabourEdit()" class="bg-slate-500 hover:bg-slate-600 text-white font-medium px-5 py-2.5 rounded-lg shadow-sm transition active:scale-95">Cancel</button>
           </div>
         </div>
 

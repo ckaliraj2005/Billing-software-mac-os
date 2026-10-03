@@ -726,18 +726,28 @@ function getGodowns() {
 }
 
 function addGodown(name) {
-  const godownName = String(name || '').trim();
-  if (!godownName) {
-    return { success: false, message: 'Godown name is required.' };
-  }
+  try {
+    let godownName = '';
+    if (typeof name === 'object' && name !== null) {
+      godownName = String(name.name || name.godown_name || name.godownName || '').trim();
+    } else {
+      godownName = String(name || '').trim();
+    }
 
-  const duplicate = findDuplicateGodownStmt.get(godownName);
-  if (duplicate) {
-    return { success: false, message: 'Godown with this name already exists.' };
-  }
+    if (!godownName) {
+      return { success: false, message: 'Godown name is required.' };
+    }
 
-  const result = insertGodownStmt.run(godownName);
-  return { success: result.changes > 0, id: Number(result.lastInsertRowid) };
+    const duplicate = findDuplicateGodownStmt.get(godownName);
+    if (duplicate) {
+      return { success: false, message: 'Godown with this name already exists.', id: duplicate.id };
+    }
+
+    const result = insertGodownStmt.run(godownName);
+    return { success: result.changes > 0, id: Number(result.lastInsertRowid), name: godownName };
+  } catch (error) {
+    return { success: false, message: error.message || 'Unable to add godown.' };
+  }
 }
 
 function deleteGodown(id) {

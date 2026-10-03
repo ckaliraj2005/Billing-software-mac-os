@@ -78,9 +78,9 @@ function ensureEditorDialog() {
         <h3 id="editorDialogTitle" class="text-lg font-semibold">Edit</h3>
       </div>
       <div id="editorDialogFields" class="p-4 grid grid-cols-1 md:grid-cols-2 gap-3"></div>
-      <div class="px-4 py-3 border-t text-right">
-        <button id="editorDialogCancel" class="bg-gray-500 text-white px-4 py-2 rounded mr-2">Cancel</button>
-        <button id="editorDialogSave" class="bg-blue-700 text-white px-4 py-2 rounded">Save</button>
+      <div class="px-5 py-3 border-t flex items-center justify-end gap-3 bg-gray-50/50 rounded-b">
+        <button id="editorDialogCancel" class="bg-slate-500 hover:bg-slate-600 text-white font-medium px-4 py-2 rounded-lg shadow-sm transition active:scale-95">Cancel</button>
+        <button id="editorDialogSave" class="bg-blue-700 hover:bg-blue-800 text-white font-medium px-4 py-2 rounded-lg shadow-sm transition active:scale-95">Save</button>
       </div>
     </div>
   `;
@@ -243,7 +243,165 @@ function setActiveSidebar(view) {
         button.classList.toggle('bg-blue-800', !isActive);
     });
 }
-function showView(view) {
+let currentActiveView = 'transaction';
+const navigationHistory = [];
+let isNavigatingBack = false;
+
+function updateGlobalBackButton() {
+    const btn = document.getElementById('globalBackBtn');
+    if (btn) {
+        btn.disabled = navigationHistory.length === 0;
+    }
+}
+
+function updateGlobalBreadcrumbs(view, stage = null) {
+    const breadcrumbEl = document.getElementById('globalBreadcrumb');
+    if (!breadcrumbEl) return;
+
+    const titles = {
+        transaction: 'Transactions',
+        ledger: 'Ledger',
+        stock: 'Godown Stock',
+        rawMaterial: 'Raw Material',
+        rawMaterialStock: 'Raw Material Stock',
+        rawMaterialEntry: 'Raw Material Entry',
+        rawMaterialLedger: 'Raw Material Ledger',
+        labourAttendance: 'Labour Attendance',
+        profitLoss: 'Profit & Loss',
+        crackers: 'Cracker Purchase Rate',
+        party: "Party's Address",
+        paymentIn: 'Payment IN',
+        paymentOut: 'Payment OUT',
+        profile: 'Profile Settings'
+    };
+
+    const mainTitle = titles[view] || view;
+    let subTitle = '';
+    if (view === 'transaction') {
+        const curStage = stage || transactionFlowStage;
+        if (curStage === 'party') {
+            subTitle = currentTransactionType === 'sale' ? 'Sales Entry › Party List' : 'Purchase Entry › Party List';
+        } else if (curStage === 'entry') {
+            if (currentTransactionType === 'sale') subTitle = 'Estimated Sales Invoice';
+            else if (currentTransactionType === 'purchase') subTitle = 'Purchase Entry';
+            else if (currentTransactionType === 'sales_return') subTitle = 'Sales Return';
+            else if (currentTransactionType === 'purchase_return') subTitle = 'Purchase Return';
+        } else {
+            subTitle = 'Choose Entry Type';
+        }
+    } else if (view === 'stock') {
+        const isDetail = document.getElementById('godownDetailCard') && !document.getElementById('godownDetailCard').classList.contains('hidden');
+        if (isDetail) {
+            const titleEl = document.getElementById('selectedGodownTitle');
+            subTitle = titleEl ? titleEl.textContent : 'Godown Detail';
+        }
+    } else if (view === 'ledger') {
+        const detailPanel = document.getElementById('ledgerDetailPanel');
+        if (detailPanel && !detailPanel.classList.contains('hidden')) {
+            const titleEl = document.getElementById('ledgerPartyTitle');
+            subTitle = titleEl ? titleEl.textContent : 'Party Ledger';
+        }
+    }
+
+    if (subTitle) {
+        breadcrumbEl.innerHTML = `<span class="text-gray-500 font-normal">${escapeHtml(mainTitle)}</span> <span class="text-gray-400 font-normal">›</span> <span class="text-gray-900 font-semibold">${escapeHtml(subTitle)}</span>`;
+    } else {
+        breadcrumbEl.innerHTML = `<span class="text-gray-900 font-semibold">${escapeHtml(mainTitle)}</span>`;
+    }
+}
+
+function recordNavState() {
+    if (isNavigatingBack) return;
+    const isGodownDetail = Boolean(document.getElementById('godownDetailCard') && !document.getElementById('godownDetailCard').classList.contains('hidden'));
+    const isLedgerDetail = Boolean(document.getElementById('ledgerDetailPanel') && !document.getElementById('ledgerDetailPanel').classList.contains('hidden'));
+
+    const state = {
+        view: currentActiveView || 'transaction',
+        transactionStage: transactionFlowStage,
+        transactionType: currentTransactionType,
+        transactionPartyId: transactionFlowPartyId,
+        godownStage: isGodownDetail ? 'detail' : 'list',
+        selectedGodownId: selectedGodownId,
+        ledgerStage: isLedgerDetail ? 'detail' : 'root',
+        ledgerPartyId: ledgerSelectedPartyId
+    };
+
+    const last = navigationHistory[navigationHistory.length - 1];
+    if (last &&
+        last.view === state.view &&
+        last.transactionStage === state.transactionStage &&
+        last.transactionType === state.transactionType &&
+        last.transactionPartyId === state.transactionPartyId &&
+        last.godownStage === state.godownStage &&
+        last.selectedGodownId === state.selectedGodownId &&
+        last.ledgerStage === state.ledgerStage &&
+        last.ledgerPartyId === state.ledgerPartyId) {
+        return;
+    }
+
+    navigationHistory.push(state);
+    updateGlobalBackButton();
+}
+
+function goBack() {
+    if (navigationHistory.length === 0) {
+        if (currentActiveView === 'transaction') {
+            if (transactionFlowStage === 'entry') {
+                beginTransactionPartySelection(currentTransactionType);
+            } else if (transactionFlowStage === 'party') {
+                openTransactionEntryRoot();
+            }
+        } else if (currentActiveView === 'stock') {
+            goBackToGodownList();
+        } else if (currentActiveView === 'ledger') {
+            openLedgerRoot();
+        }
+        return;
+    }
+
+    isNavigatingBack = true;
+    const prevState = navigationHistory.pop();
+    updateGlobalBackButton();
+
+    try {
+        if (prevState.view !== currentActiveView) {
+            showView(prevState.view, false);
+        }
+
+        if (prevState.view === 'transaction') {
+            currentTransactionType = prevState.transactionType || 'sale';
+            if (prevState.transactionStage === 'mode') {
+                openTransactionEntryRoot();
+            } else if (prevState.transactionStage === 'party') {
+                beginTransactionPartySelection(currentTransactionType);
+            } else if (prevState.transactionStage === 'entry' && prevState.transactionPartyId) {
+                openTransactionEntryForParty(prevState.transactionPartyId);
+            }
+        } else if (prevState.view === 'stock') {
+            if (prevState.godownStage === 'detail' && prevState.selectedGodownId) {
+                openGodown(prevState.selectedGodownId);
+            } else {
+                goBackToGodownList();
+            }
+        } else if (prevState.view === 'ledger') {
+            if (prevState.ledgerStage === 'detail' && prevState.ledgerPartyId) {
+                openLedgerForParty(prevState.ledgerPartyId);
+            } else {
+                openLedgerRoot();
+            }
+        }
+        updateGlobalBreadcrumbs(prevState.view, prevState.transactionStage);
+    } finally {
+        isNavigatingBack = false;
+    }
+}
+window.goBack = goBack;
+
+function showView(view, addToHistory = true) {
+    if (addToHistory && view !== currentActiveView) {
+        recordNavState();
+    }
+    currentActiveView = view;
     const views = {
         party: document.getElementById('partyView'),
         paymentIn: document.getElementById('paymentInView'),
@@ -313,6 +471,8 @@ function showView(view) {
     if (view === 'profile') {
         loadProfileSettings();
     }
+    updateGlobalBreadcrumbs(view);
+    updateGlobalBackButton();
 }
 function setTransactionType(type, shouldRefresh = true) {
     const normalized = String(type || '').trim().toLowerCase();
@@ -402,11 +562,17 @@ function setTransactionFlowStage(stage) {
         salesReturnPanel.classList.toggle('hidden', stage !== 'entry' || currentTransactionType !== 'sales_return');
     }
 }
-function openTransactionEntryRoot() {
+function openTransactionEntryRoot(addToHistory = true) {
+    if (addToHistory && (currentActiveView !== 'transaction' || transactionFlowStage !== 'mode')) {
+        recordNavState();
+    }
     transactionFlowPartyId = null;
     setTransactionFlowStage('mode');
+    updateGlobalBreadcrumbs('transaction', 'mode');
+    updateGlobalBackButton();
 }
 async function beginTransactionPartySelection(type) {
+    recordNavState();
     currentTransactionType = type === 'sale' ? 'sale' : 'purchase';
     transactionFlowPartyId = null;
     const title = document.getElementById('transactionPartyTitle');
@@ -416,8 +582,11 @@ async function beginTransactionPartySelection(type) {
     await refreshPartyData();
     renderTransactionPartyTable();
     setTransactionFlowStage('party');
+    updateGlobalBreadcrumbs('transaction', 'party');
+    updateGlobalBackButton();
 }
 async function beginReturnEntry(type) {
+    recordNavState();
     currentTransactionType = type === 'sales_return' ? 'sales_return' : 'purchase_return';
     transactionFlowPartyId = null;
     const title = document.getElementById('transactionPartyTitle');
@@ -427,9 +596,11 @@ async function beginReturnEntry(type) {
     await refreshPartyData();
     renderTransactionPartyTable();
     setTransactionFlowStage('party');
+    updateGlobalBreadcrumbs('transaction', 'party');
+    updateGlobalBackButton();
 }
 function backToTransactionTypePicker() {
-    setTransactionFlowStage('mode');
+    goBack();
 }
 function renderTransactionPartyTable() {
     const body = document.getElementById('transactionPartyTableBody');
@@ -464,10 +635,12 @@ function renderTransactionPartyTable() {
         <td class="px-4 py-3 align-middle"><button onclick="openTransactionEntryForParty(${ party.id })" class="text-blue-800 hover:underline">${ escapeHtml(party.name || '-') }</button></td>
         <td class="px-4 py-3 align-middle">${ escapeHtml(party.phone || '-') }</td>
         <td class="px-4 py-3 align-middle">${ escapeHtml(party.city || '-') }</td>
-        <td class="px-4 py-3 align-middle">
-          <button onclick="openTransactionEntryForParty(${ party.id })" class="bg-blue-700 text-white px-3 py-1 rounded mr-2">Open</button>
-          <button onclick="editTransactionParty(${ party.id })" class="bg-amber-500 text-white px-3 py-1 rounded">Edit</button>
-          <button onclick="deleteTransactionParty(${ party.id })" class="bg-red-600 text-white px-3 py-1 rounded">Delete</button>
+        <td class="px-4 py-3 align-middle text-center whitespace-nowrap">
+          <div class="inline-flex items-center justify-center gap-2">
+            <button onclick="openTransactionEntryForParty(${ party.id })" class="bg-blue-700 hover:bg-blue-800 text-white font-medium px-3 py-1.5 rounded-lg shadow-sm transition active:scale-95 text-xs">Open</button>
+            <button onclick="editTransactionParty(${ party.id })" class="bg-amber-500 hover:bg-amber-600 text-white font-medium px-3 py-1.5 rounded-lg shadow-sm transition active:scale-95 text-xs">Edit</button>
+            <button onclick="deleteTransactionParty(${ party.id })" class="bg-rose-600 hover:bg-rose-700 text-white font-medium px-3 py-1.5 rounded-lg shadow-sm transition active:scale-95 text-xs">Delete</button>
+          </div>
         </td>
       </tr>
     `;
@@ -626,6 +799,7 @@ function openTransactionEntryForParty(id) {
     if (!party) {
         return;
     }
+    recordNavState();
     transactionFlowPartyId = Number(id);
     setTransactionFlowStage('entry');
     setTransactionType(currentTransactionType, true);
@@ -646,6 +820,8 @@ function openTransactionEntryForParty(id) {
     } else if (currentTransactionType === 'sales_return') {
         rebuildSalesReturnReferenceOptions();
     }
+    updateGlobalBreadcrumbs('transaction', 'entry');
+    updateGlobalBackButton();
     showToast(`Opened ${ currentTransactionType.replace('_', ' ') } entry for ${ party.name }.`);
 }
 function setDefaultDates() {
@@ -784,15 +960,17 @@ function renderParties(parties) {
     parties.forEach(party => {
         html += `
       <tr class="border-t">
-        <td class="px-4 py-3 align-middle flex items-center justify-center gap-2">${ escapeHtml(party.name) }</td>
-        <td class="px-4 py-3 align-middle">${ escapeHtml(party.city) }</td>
-        <td class="px-4 py-3 align-middle">${ escapeHtml(party.state || '') }</td>
-        <td class="px-4 py-3 align-middle">${ escapeHtml(party.phone) }</td>
-        <td class="px-4 py-3 align-middle whitespace-pre-line">${ escapeHtml(party.address || '') }</td>
-        <td class="px-4 py-3 align-middle whitespace-pre-line">${ escapeHtml(party.notes || '') }</td>
-        <td class="px-4 py-3 align-middle">
-          <button onclick="editParty(${ party.id })" class="bg-amber-500 text-white px-3 py-1 rounded">Edit</button>
-          <button onclick="deleteParty(${ party.id })" class="bg-red-600 text-white px-3 py-1 rounded">Delete</button>
+        <td class="px-4 py-3 align-middle font-medium text-gray-900">${ escapeHtml(party.name) }</td>
+        <td class="px-4 py-3 align-middle text-gray-700">${ escapeHtml(party.city) }</td>
+        <td class="px-4 py-3 align-middle text-gray-700">${ escapeHtml(party.state || '') }</td>
+        <td class="px-4 py-3 align-middle text-gray-700">${ escapeHtml(party.phone) }</td>
+        <td class="px-4 py-3 align-middle whitespace-pre-line text-gray-700">${ escapeHtml(party.address || '') }</td>
+        <td class="px-4 py-3 align-middle whitespace-pre-line text-gray-600 text-xs">${ escapeHtml(party.notes || '') }</td>
+        <td class="px-4 py-3 align-middle text-center whitespace-nowrap">
+          <div class="inline-flex items-center justify-center gap-2">
+            <button onclick="editParty(${ party.id })" class="bg-amber-500 hover:bg-amber-600 text-white font-medium px-3 py-1.5 rounded-lg shadow-sm transition active:scale-95 text-xs">Edit</button>
+            <button onclick="deleteParty(${ party.id })" class="bg-rose-600 hover:bg-rose-700 text-white font-medium px-3 py-1.5 rounded-lg shadow-sm transition active:scale-95 text-xs">Delete</button>
+          </div>
         </td>
       </tr>
     `;
@@ -1869,6 +2047,7 @@ async function openLedgerForParty(partyId) {
         window.alert('Party not found. Refresh and try again.');
         return;
     }
+    recordNavState();
     ledgerSelectedPartyId = id;
     const picker = document.getElementById('ledgerPartyPicker');
     const detail = document.getElementById('ledgerDetailPanel');
@@ -1895,6 +2074,8 @@ async function openLedgerForParty(partyId) {
     }
     resetManualLedgerForm();
     renderLedgerPartyTable();
+    updateGlobalBreadcrumbs('ledger');
+    updateGlobalBackButton();
     await loadLedger();
 }
 function backToLedgerPartyPicker() {
@@ -2496,9 +2677,11 @@ function renderPurchases(purchases) {
         <td class="px-4 py-3 align-middle text-right">${ Number(purchase.discount_percent || 0).toFixed(2) }</td>
         <td class="px-4 py-3 align-middle text-right">${ Number(purchase.selling_rate || 0).toFixed(2) }</td>
         <td class="px-4 py-3 align-middle text-right">${ Number(purchase.total || 0).toFixed(2) }</td>
-        <td class="px-4 py-3 align-middle">
-          <button onclick="startEditPurchase(${ purchase.id })" class="bg-amber-500 text-white px-3 py-1 rounded">Edit</button>
-          <button onclick="removePurchase(${ purchase.id })" class="bg-red-600 text-white px-3 py-1 rounded">Delete</button>
+        <td class="px-4 py-3 align-middle text-center whitespace-nowrap">
+          <div class="inline-flex items-center justify-center gap-2">
+            <button onclick="startEditPurchase(${ purchase.id })" class="bg-amber-500 hover:bg-amber-600 text-white font-medium px-3 py-1.5 rounded-lg shadow-sm transition active:scale-95 text-xs">Edit</button>
+            <button onclick="removePurchase(${ purchase.id })" class="bg-rose-600 hover:bg-rose-700 text-white font-medium px-3 py-1.5 rounded-lg shadow-sm transition active:scale-95 text-xs">Delete</button>
+          </div>
         </td>
       </tr>
     `;
@@ -2584,8 +2767,11 @@ async function addGodown() {
         return;
     }
     input.value = '';
+    if (result.id) {
+        selectedGodownId = Number(result.id);
+    }
     await refreshGodowns();
-    showToast('Godown added.');
+    showToast(`Godown "${result.name || name}" added successfully.`);
 }
 async function deleteGodown(id) {
     const result = await window.api.deleteGodown(id);
@@ -2610,16 +2796,21 @@ async function deleteGodownFromTop() {
     await deleteGodown(godownId);
 }
 function openGodown(id) {
+    recordNavState();
     selectedGodownId = Number(id);
     const selected = currentGodowns.find(godown => Number(godown.id) === Number(selectedGodownId));
     document.getElementById('godownSelectionCard').classList.add('hidden');
     document.getElementById('godownDetailCard').classList.remove('hidden');
     document.getElementById('selectedGodownTitle').textContent = selected ? selected.name : 'Godown Details';
+    updateGlobalBreadcrumbs('stock');
+    updateGlobalBackButton();
     refreshStock();
 }
 function goBackToGodownList() {
     document.getElementById('godownSelectionCard').classList.remove('hidden');
     document.getElementById('godownDetailCard').classList.add('hidden');
+    updateGlobalBreadcrumbs('stock');
+    updateGlobalBackButton();
 }
 function renderStock(rows) {
     currentGodownStockRows = Array.isArray(rows) ? rows : [];
@@ -2628,7 +2819,7 @@ function renderStock(rows) {
     if (!currentGodownStockRows || currentGodownStockRows.length === 0) {
         table.innerHTML = `
       <tr>
-        <td colspan="14" class="p-4 text-center text-gray-500 flex items-center justify-center gap-2">No stock found for selected godown.</td>
+        <td colspan="14" class="p-4 text-center text-gray-500">No stock found for selected godown.</td>
       </tr>
     `;
         return;
@@ -2648,7 +2839,7 @@ function renderStock(rows) {
       <tr class="${ rowClass }">
         <td class="px-4 py-3 align-middle">${ escapeHtml(formatDisplayDate(addedDate)) }</td>
         <td class="px-4 py-3 align-middle">${ escapeHtml(billNo) }</td>
-        <td class="px-4 py-3 align-middle">${ escapeHtml(row.product_name) }</td>
+        <td class="px-4 py-3 align-middle font-medium text-gray-900">${ escapeHtml(row.product_name) }</td>
         <td class="px-4 py-3 align-middle text-right">${ Number(row.total_boxes) || 0 }</td>
         <td class="px-4 py-3 align-middle text-right">${ qtyPerCase }</td>
         <td class="px-4 py-3 align-middle">${ escapeHtml(unitType) }</td>
@@ -2658,10 +2849,12 @@ function renderStock(rows) {
         <td class="px-4 py-3 align-middle text-right">${ Number(row.transport_charge || 0).toFixed(2) }</td>
         <td class="px-4 py-3 align-middle text-right">${ Number(row.commission || 0).toFixed(2) }</td>
         <td class="px-4 py-3 align-middle text-right">${ Number(row.selling_rate || 0).toFixed(2) }</td>
-        <td class="px-4 py-3 align-middle text-right">${ stockValue.toFixed(2) }</td>
-        <td class="px-4 py-3 align-middle">
-          <button onclick="editGodownStockItem(${ Number(row.product_id) })" class="bg-amber-500 text-white px-3 py-1 rounded">Edit</button>
-          <button onclick="removeGodownStockItem(${ Number(row.product_id) })" class="bg-red-600 text-white px-3 py-1 rounded">Remove</button>
+        <td class="px-4 py-3 align-middle text-right font-semibold">${ stockValue.toFixed(2) }</td>
+        <td class="px-4 py-3 align-middle text-center whitespace-nowrap">
+          <div class="inline-flex items-center justify-center gap-2">
+            <button onclick="editGodownStockItem(${ Number(row.product_id) })" class="bg-amber-500 hover:bg-amber-600 text-white font-medium px-3 py-1.5 rounded-lg shadow-sm transition active:scale-95 text-xs">Edit</button>
+            <button onclick="removeGodownStockItem(${ Number(row.product_id) })" class="bg-rose-600 hover:bg-rose-700 text-white font-medium px-3 py-1.5 rounded-lg shadow-sm transition active:scale-95 text-xs">Remove</button>
+          </div>
         </td>
       </tr>
     `;
@@ -3200,26 +3393,49 @@ function resetSaleForm() {
     setChecked('saleUseDiscount', true);
     setChecked('saleUseTransport', true);
     setChecked('saleUseCommission', false);
+    setChecked('saleUseAgentCommission', false);
     setValue('saleDiscount', '0');
     setValue('saleDiscountMode', 'amount');
     setValue('saleDeliveryCharges', '0');
     setValue('saleCommissionCharges', '0');
     setValue('salePackingMode', 'amount');
+    setValue('saleAgentName', '');
+    setValue('saleAgentCommission', '0');
+    setValue('saleAgentCommissionMode', 'amount');
+    toggleAgentCommissionFields();
     setValue('saleUnitType', 'Pcs');
 }
+function toggleAgentCommissionFields() {
+    const isChecked = Boolean(document.getElementById('saleUseAgentCommission')?.checked);
+    const container = document.getElementById('saleAgentCommissionFields');
+    if (container) {
+        container.classList.toggle('hidden', !isChecked);
+    }
+    recalculateSaleFinalTotal();
+}
+window.toggleAgentCommissionFields = toggleAgentCommissionFields;
+
 function recalculateSaleFinalTotal() {
     const grand = saleItemsDraft.reduce((sum, item) => sum + item.total, 0);
     const discountRaw = Number(document.getElementById('saleDiscount').value) || 0;
     const transportRaw = Number(document.getElementById('saleDeliveryCharges').value) || 0;
     const commissionRaw = Number(document.getElementById('saleCommissionCharges').value) || 0;
+    const agentRaw = Number(document.getElementById('saleAgentCommission')?.value) || 0;
+
     const discountMode = String(document.getElementById('saleDiscountMode')?.value || 'amount').trim();
     const packingMode = String(document.getElementById('salePackingMode')?.value || 'amount').trim();
+    const agentMode = String(document.getElementById('saleAgentCommissionMode')?.value || 'amount').trim();
+
     const discountAmount = discountMode === 'percent' ? grand * discountRaw / 100 : discountRaw;
     const packingAmount = packingMode === 'percent' ? grand * commissionRaw / 100 : commissionRaw;
+    const agentAmount = agentMode === 'percent' ? grand * agentRaw / 100 : agentRaw;
+
     const discount = document.getElementById('saleUseDiscount').checked ? discountAmount : 0;
     const transport = document.getElementById('saleUseTransport').checked ? transportRaw : 0;
     const commission = document.getElementById('saleUseCommission').checked ? packingAmount : 0;
-    const finalTotal = Math.max(0, grand - discount) + transport + commission;
+    const agentCommission = Boolean(document.getElementById('saleUseAgentCommission')?.checked) ? agentAmount : 0;
+
+    const finalTotal = Math.max(0, grand - discount) + transport + commission + agentCommission;
     document.getElementById('saleGrandTotal').value = grand.toFixed(2);
     document.getElementById('saleFinalTotal').value = finalTotal.toFixed(2);
 }
@@ -3229,13 +3445,15 @@ function renderSaleDraft() {
     saleItemsDraft.forEach((item, index) => {
         table.innerHTML += `
       <tr class="border-t">
-        <td class="px-4 py-3 align-middle flex items-center justify-center gap-2">${ escapeHtml(item.product_name) }</td>
-        <td class="px-4 py-3 align-middle">${ item.boxes }</td>
-        <td class="px-4 py-3 align-middle">${ item.pieces }</td>
-        <td class="px-4 py-3 align-middle">${ escapeHtml(normalizeUnitType(item.unit_type) || 'Pcs') }</td>
+        <td class="px-4 py-3 align-middle font-medium text-gray-900">${ escapeHtml(item.product_name) }</td>
+        <td class="px-4 py-3 align-middle text-right">${ item.boxes }</td>
+        <td class="px-4 py-3 align-middle text-right">${ item.pieces }</td>
+        <td class="px-4 py-3 align-middle text-center">${ escapeHtml(normalizeUnitType(item.unit_type) || 'Pcs') }</td>
         <td class="px-4 py-3 align-middle text-right">${ item.rate.toFixed(2) }</td>
-        <td class="px-4 py-3 align-middle text-right">${ item.total.toFixed(2) }</td>
-        <td class="px-4 py-3 align-middle"><button onclick="removeSaleItem(${ index })" class="bg-red-600 text-white px-3 py-1 rounded">Delete</button></td>
+        <td class="px-4 py-3 align-middle text-right font-semibold">${ item.total.toFixed(2) }</td>
+        <td class="px-4 py-3 align-middle text-center whitespace-nowrap">
+          <button onclick="removeSaleItem(${ index })" class="bg-rose-600 hover:bg-rose-700 text-white font-medium px-3 py-1.5 rounded-lg shadow-sm transition active:scale-95 text-xs">Delete</button>
+        </td>
       </tr>
     `;
     });
@@ -3284,8 +3502,7 @@ async function saveSaleInvoice() {
     const selectedParty = currentParties.find(item => Number(item.id) === partyId);
     const billNameInput = String(document.getElementById('saleBillName')?.value || '').trim();
     const billName = billNameInput || String(selectedParty?.name || '').trim();
-    const partyAddressInput = String(document.getElementById('salePartyAddress')?.value || '').trim();
-    const partyAddress = partyAddressInput || String(selectedParty?.address || '').trim();
+    const partyAddress = String(document.getElementById('salePartyAddress')?.value ?? '').trim();
     const deliveryDate = document.getElementById('saleDeliveryDate').value;
     const vehicleNo = document.getElementById('saleVehicleNo').value.trim();
     const deliveryPlace = String(document.getElementById('saleDeliveryPlace')?.value || '').trim();
@@ -3307,6 +3524,13 @@ async function saveSaleInvoice() {
     const discount = document.getElementById('saleUseDiscount').checked ? discountAmount : 0;
     const deliveryCharges = document.getElementById('saleUseTransport').checked ? deliveryRaw : 0;
     const commissionCharges = document.getElementById('saleUseCommission').checked ? packingAmount : 0;
+
+    const useAgentCommission = Boolean(document.getElementById('saleUseAgentCommission')?.checked);
+    const agentName = useAgentCommission ? String(document.getElementById('saleAgentName')?.value || '').trim() : '';
+    const agentRaw = useAgentCommission ? (Number(document.getElementById('saleAgentCommission')?.value) || 0) : 0;
+    const agentMode = String(document.getElementById('saleAgentCommissionMode')?.value || 'amount').trim();
+    const agentCommission = useAgentCommission ? (agentMode === 'percent' ? saleItemsDraft.reduce((sum, item) => sum + item.total, 0) * agentRaw / 100 : agentRaw) : 0;
+
     const editingId = Number(document.getElementById('editingSaleId').value);
     if (!date || !billNo || !partyId || saleItemsDraft.length === 0) {
         window.alert('Date, bill no, customer and at least one sale item are required.');
@@ -3316,7 +3540,7 @@ async function saveSaleInvoice() {
         window.alert('Bill time is required.');
         return;
     }
-    if (discount < 0 || deliveryCharges < 0 || commissionCharges < 0) {
+    if (discount < 0 || deliveryCharges < 0 || commissionCharges < 0 || agentCommission < 0) {
         window.alert('Discount, transportation and commission cannot be negative.');
         return;
     }
@@ -3338,6 +3562,8 @@ async function saveSaleInvoice() {
         discount,
         delivery_charges: deliveryCharges,
         packing_charges: commissionCharges,
+        agent_name: agentName,
+        agent_commission: agentCommission,
         items: saleItemsDraft
     };
     const result = editingId ? await window.api.updateSale(editingId, payload) : await window.api.addSale(payload);
@@ -3377,11 +3603,13 @@ function renderSales(sales) {
         <td class="px-4 py-3 align-middle text-gray-700">${ escapeHtml(formatDisplayDate(sale.date)) }</td>
         <td class="px-4 py-3 align-middle text-gray-700">${ escapeHtml(sale.party_name) }</td>
         <td class="px-4 py-3 align-middle text-right font-semibold text-gray-800">${ Number(sale.total).toFixed(2) }</td>
-        <td class="px-4 py-3 align-middle whitespace-nowrap flex items-center justify-center gap-2">
-          <button onclick="viewSaleDetail(${ sale.id })" class="bg-blue-600 text-white px-3 py-1 rounded mr-2">View</button>
-          <button onclick="shareSaleOnWhatsAppById(${ sale.id })" class="bg-emerald-600 text-white px-3 py-1 rounded mr-2">Share</button>
-          <button onclick="startEditSale(${ sale.id })" class="bg-amber-500 text-white px-3 py-1 rounded">Edit</button>
-          <button onclick="removeSale(${ sale.id })" class="bg-red-600 text-white px-3 py-1 rounded">Delete</button>
+        <td class="px-4 py-3 align-middle text-center whitespace-nowrap">
+          <div class="inline-flex items-center justify-center gap-2">
+            <button onclick="viewSaleDetail(${ sale.id })" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-3 py-1.5 rounded-lg shadow-sm transition active:scale-95 text-xs">View</button>
+            <button onclick="shareSaleOnWhatsAppById(${ sale.id })" class="bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-3 py-1.5 rounded-lg shadow-sm transition active:scale-95 text-xs">Share</button>
+            <button onclick="startEditSale(${ sale.id })" class="bg-amber-500 hover:bg-amber-600 text-white font-medium px-3 py-1.5 rounded-lg shadow-sm transition active:scale-95 text-xs">Edit</button>
+            <button onclick="removeSale(${ sale.id })" class="bg-rose-600 hover:bg-rose-700 text-white font-medium px-3 py-1.5 rounded-lg shadow-sm transition active:scale-95 text-xs">Delete</button>
+          </div>
         </td>
       </tr>
     `;
@@ -4194,9 +4422,12 @@ async function startEditSale(id) {
     document.getElementById('saleUseCommission').checked = Number(details.packing_charges || 0) > 0;
     document.getElementById('saleDiscount').value = String(Number(details.discount) || 0);
     document.getElementById('saleDiscountMode').value = 'amount';
-    document.getElementById('saleDeliveryCharges').value = String(Number(details.delivery_charges) || 0);
-    document.getElementById('saleCommissionCharges').value = String(Number(details.packing_charges) || 0);
-    document.getElementById('salePackingMode').value = 'amount';
+    const useAgent = Number(details.agent_commission || 0) > 0 || Boolean(String(details.agent_name || '').trim());
+    document.getElementById('saleUseAgentCommission').checked = useAgent;
+    document.getElementById('saleAgentName').value = details.agent_name || '';
+    document.getElementById('saleAgentCommission').value = String(Number(details.agent_commission) || 0);
+    document.getElementById('saleAgentCommissionMode').value = 'amount';
+    toggleAgentCommissionFields();
     saleItemsDraft = (details.items || []).map(item => ({
         product_id: item.product_id,
         product_name: item.product_name,
@@ -5167,7 +5398,100 @@ window.exportLedgerCsv = exportLedgerCsv;
 window.exportSalesCsv = exportSalesCsv;
 window.exportPurchasesCsv = exportPurchasesCsv;
 window.importPartiesCsv = importPartiesCsv;
+function initPlatformStyles() {
+    if (window.api && window.api.getPlatform) {
+        try {
+            const platform = window.api.getPlatform();
+            if (platform === 'darwin') {
+                document.body.classList.add('platform-mac');
+                const titleBarDrag = document.getElementById('macosTitleBarDrag');
+                if (titleBarDrag) {
+                    titleBarDrag.classList.remove('hidden');
+                }
+            } else {
+                document.body.classList.add('platform-win');
+            }
+        } catch (_e) {
+            document.body.classList.add('platform-win');
+        }
+    }
+}
+
+function setupAutoFocusOnEnter() {
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter') return;
+        const target = event.target;
+        if (!target) return;
+
+        const tagName = target.tagName.toLowerCase();
+        const isInput = tagName === 'input';
+        const isSelect = tagName === 'select';
+        const isTextarea = tagName === 'textarea';
+
+        if (!isInput && !isSelect && !isTextarea) return;
+
+        // Skip buttons, submits, checkboxes, radios
+        const inputType = (target.type || '').toLowerCase();
+        if (inputType === 'button' || inputType === 'submit' || inputType === 'reset') return;
+
+        // In textarea, Shift+Enter creates a new line; Enter moves to next field
+        if (isTextarea && event.shiftKey) return;
+
+        // In godown name input, allow Enter to trigger addGodown
+        if (target.id === 'godownNameInput') return;
+
+        // In line-item rate inputs, allow Enter to add item
+        if (target.id === 'purchaseSellingRate') {
+            event.preventDefault();
+            addPurchaseItem();
+            const firstInput = document.getElementById('purchaseProductName');
+            if (firstInput) {
+                firstInput.focus();
+                if (typeof firstInput.select === 'function') firstInput.select();
+            }
+            return;
+        }
+
+        if (target.id === 'saleRate') {
+            event.preventDefault();
+            addSaleItem();
+            const firstInput = document.getElementById('saleProductId');
+            if (firstInput) {
+                firstInput.focus();
+            }
+            return;
+        }
+
+        // Find enclosing form or panel container
+        const container = target.closest('form') ||
+                          target.closest('.modal-content') ||
+                          target.closest('#editorDialogOverlay > div') ||
+                          target.closest('[id$="Panel"]') ||
+                          target.closest('[id$="Card"]') ||
+                          target.closest('[id$="View"]') ||
+                          document.body;
+
+        const selector = 'input:not([type="hidden"]):not([type="button"]):not([type="submit"]):not([disabled]):not([readonly]), select:not([disabled]), textarea:not([disabled]):not([readonly])';
+        const focusables = Array.from(container.querySelectorAll(selector)).filter(el => {
+            const style = window.getComputedStyle(el);
+            return style.display !== 'none' && style.visibility !== 'hidden' && el.offsetParent !== null;
+        });
+
+        const currentIndex = focusables.indexOf(target);
+        if (currentIndex !== -1 && currentIndex < focusables.length - 1) {
+            event.preventDefault();
+            const nextEl = focusables[currentIndex + 1];
+            nextEl.focus();
+            if (typeof nextEl.select === 'function') {
+                nextEl.select();
+            }
+        }
+    });
+}
+
 window.onload = async () => {
+    initPlatformStyles();
+    setupAutoFocusOnEnter();
     await withLoading(async () => {
         setDefaultDates();
         await initializePartyLocationInputs();

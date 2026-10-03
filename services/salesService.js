@@ -4,16 +4,16 @@ const insertSaleStmt = db.prepare(
   `INSERT INTO sales (
     date, party_id, godown_id, type, bill_no, bill_name, party_address,
     bill_time, delivery_date, vehicle_no, delivery_place, delivery_time, delivery_feedback, delivery_details,
-    discount, delivery_charges, packing_charges, total
+    discount, delivery_charges, packing_charges, agent_name, agent_commission, total
   )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 );
 
 const updateSaleStmt = db.prepare(
   `UPDATE sales
   SET date = ?, party_id = ?, godown_id = ?, type = ?, bill_no = ?, bill_name = ?, party_address = ?,
       bill_time = ?, delivery_date = ?, vehicle_no = ?, delivery_place = ?, delivery_time = ?, delivery_feedback = ?, delivery_details = ?,
-      discount = ?, delivery_charges = ?, packing_charges = ?, total = ?
+      discount = ?, delivery_charges = ?, packing_charges = ?, agent_name = ?, agent_commission = ?, total = ?
    WHERE id = ?`
 );
 
@@ -221,8 +221,7 @@ function rollbackSaleStock(items, godownId) {
 
 function writeSaleLedgerEntries(saleId, saleDate, partyId, saleType, total) {
   const particulars = `Sale #${saleId}`;
-  const isCredit = normalizeSaleType(saleType) === 'credit';
-  if (isCredit && Number(total) > 0) {
+  if (partyId && Number(total) > 0) {
     insertLedgerStmt.run(saleDate, null, null, saleId, partyId, 'debit', 'Party', particulars, Number(total), particulars);
   }
 }
@@ -245,6 +244,8 @@ const addSaleTxn = db.transaction((data) => {
   const discount = roundCurrency(Number(data.discount) || 0);
   const deliveryCharges = roundCurrency(Number(data.delivery_charges) || 0);
   const packingCharges = roundCurrency(Number(data.packing_charges) || 0);
+  const agentName = String(data.agent_name || '').trim();
+  const agentCommission = roundCurrency(Number(data.agent_commission) || 0);
   const items = normalizeSaleItems(data.items);
 
   if (!partyId || items.length === 0) {
@@ -252,7 +253,7 @@ const addSaleTxn = db.transaction((data) => {
   }
 
   const subtotal = roundCurrency(items.reduce((sum, item) => sum + item.total, 0));
-  const finalTotal = roundCurrency(Math.max(0, subtotal - discount) + deliveryCharges + packingCharges);
+  const finalTotal = roundCurrency(Math.max(0, subtotal - discount) + deliveryCharges + packingCharges + agentCommission);
 
   const stockCheck = applySaleStockReduction(items, godownId);
   if (!stockCheck.success) {
@@ -277,6 +278,8 @@ const addSaleTxn = db.transaction((data) => {
     discount,
     deliveryCharges,
     packingCharges,
+    agentName,
+    agentCommission,
     finalTotal
   );
   const saleId = Number(saleResult.lastInsertRowid);
@@ -328,13 +331,15 @@ const updateSaleTxn = db.transaction((id, data) => {
   const discount = roundCurrency(Number(data.discount) || 0);
   const deliveryCharges = roundCurrency(Number(data.delivery_charges) || 0);
   const packingCharges = roundCurrency(Number(data.packing_charges) || 0);
+  const agentName = String(data.agent_name ?? existingSale.agent_name ?? '').trim();
+  const agentCommission = roundCurrency(Number(data.agent_commission ?? existingSale.agent_commission) || 0);
   const items = normalizeSaleItems(data.items);
   if (items.length === 0) {
     return { success: false, message: 'No valid sale items' };
   }
 
   const subtotal = roundCurrency(items.reduce((sum, item) => sum + item.total, 0));
-  const finalTotal = roundCurrency(Math.max(0, subtotal - discount) + deliveryCharges + packingCharges);
+  const finalTotal = roundCurrency(Math.max(0, subtotal - discount) + deliveryCharges + packingCharges + agentCommission);
 
   const stockCheck = applySaleStockReduction(items, godownId);
   if (!stockCheck.success) {
@@ -359,6 +364,8 @@ const updateSaleTxn = db.transaction((id, data) => {
     discount,
     deliveryCharges,
     packingCharges,
+    agentName,
+    agentCommission,
     finalTotal,
     saleId
   );
@@ -451,6 +458,8 @@ function getSaleDetails(id) {
       delivery_feedback: sale.delivery_feedback || '',
       delivery_details: sale.delivery_details || '',
       packing_charges: Number(sale.packing_charges) || 0,
+      agent_name: sale.agent_name || '',
+      agent_commission: Number(sale.agent_commission) || 0,
       items
     };
   } catch (_error) {
@@ -462,7 +471,7 @@ function getSales() {
   try {
     const stmt = db.prepare(
       `SELECT s.id, s.date, s.party_id, s.godown_id, p.name AS party_name, s.type,
-              s.discount, s.delivery_charges, s.packing_charges,
+              s.discount, s.delivery_charges, s.packing_charges, s.agent_name, s.agent_commission,
               COALESCE(s.bill_no, CAST(s.id AS TEXT)) AS bill_no,
               s.bill_name, s.party_address, s.bill_time, s.delivery_date, s.vehicle_no,
               s.delivery_place, s.delivery_time, s.delivery_feedback, s.delivery_details,
@@ -472,7 +481,7 @@ function getSales() {
        JOIN parties p ON p.id = s.party_id
        LEFT JOIN sale_items si ON si.sale_id = s.id
        GROUP BY s.id, s.date, s.party_id, s.godown_id, p.name, s.type,
-                s.discount, s.delivery_charges, s.packing_charges,
+                s.discount, s.delivery_charges, s.packing_charges, s.agent_name, s.agent_commission,
                 s.bill_no,
                 s.bill_name, s.party_address, s.bill_time, s.delivery_date, s.vehicle_no,
                 s.delivery_place, s.delivery_time, s.delivery_feedback, s.delivery_details,

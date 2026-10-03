@@ -183,6 +183,8 @@ db.prepare(`
     discount REAL NOT NULL DEFAULT 0,
     delivery_charges REAL NOT NULL DEFAULT 0,
     packing_charges REAL NOT NULL DEFAULT 0,
+    agent_name TEXT,
+    agent_commission REAL NOT NULL DEFAULT 0,
     total REAL NOT NULL,
     FOREIGN KEY (party_id) REFERENCES parties (id),
     FOREIGN KEY (godown_id) REFERENCES godowns (id)
@@ -431,6 +433,8 @@ const hasSalesDeliveryDetailsColumn = salesColumns.some((col) => col.name === 'd
 const hasDiscountColumn = salesColumns.some((col) => col.name === 'discount');
 const hasDeliveryColumn = salesColumns.some((col) => col.name === 'delivery_charges');
 const hasPackingChargesColumn = salesColumns.some((col) => col.name === 'packing_charges');
+const hasSalesAgentNameColumn = salesColumns.some((col) => col.name === 'agent_name');
+const hasSalesAgentCommissionColumn = salesColumns.some((col) => col.name === 'agent_commission');
 const saleItemColumns = db.prepare(`PRAGMA table_info(sale_items)`).all();
 const hasSaleItemUnitTypeColumn = saleItemColumns.some((col) => col.name === 'unit_type');
 const godownStockColumns = db.prepare(`PRAGMA table_info(godown_stock)`).all();
@@ -578,6 +582,14 @@ if (!hasSalesDeliveryFeedbackColumn) {
 
 if (!hasSalesDeliveryDetailsColumn) {
   db.prepare(`ALTER TABLE sales ADD COLUMN delivery_details TEXT`).run();
+}
+
+if (!hasSalesAgentNameColumn) {
+  db.prepare(`ALTER TABLE sales ADD COLUMN agent_name TEXT`).run();
+}
+
+if (!hasSalesAgentCommissionColumn) {
+  db.prepare(`ALTER TABLE sales ADD COLUMN agent_commission REAL NOT NULL DEFAULT 0`).run();
 }
 
 db.prepare(`UPDATE purchase_items SET unit_type = 'Pcs' WHERE unit_type IS NULL OR trim(unit_type) = ''`).run();
